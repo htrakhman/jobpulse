@@ -1,0 +1,284 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ApplicationStage {
+  Applied
+  Waiting
+  Interviewing
+  Assessment
+  Offer
+  Rejected
+  Closed
+}
+
+enum EmailType {
+  application_confirmation
+  interview_request
+  interview_scheduled
+  assessment
+  rejection
+  offer
+  general_update
+  unknown
+}
+
+model User {
+  id               String            @id // Clerk user ID
+  email            String            @unique
+  createdAt        DateTime          @default(now())
+  gmailAccessRequestedAt DateTime?
+  initialScanStartedAt   DateTime?
+  initialScanCompletedAt DateTime?
+  initialScanRangeDays   Int?
+  connectedAccount ConnectedAccount?
+  applications     Application[]
+  followUps        FollowUpSuggestion[]
+}
+
+model ConnectedAccount {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email           String
+  accessToken     String   @db.Text
+  refreshToken    String   @db.Text
+  tokenExpiry     DateTime?
+  watchExpiry     DateTime?
+  historyId       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model EmailMessage {
+  id              String      @id // Gmail message ID
+  threadId        String
+  userId          String
+  subject         String?
+  fromName        String?
+  fromEmail       String?
+  snippet         String?     @db.Text
+  bodyText        String?     @db.Text
+  emailType       EmailType   @default(unknown)
+  receivedAt      DateTime
+  processedAt     DateTime    @default(now())
+  applicationId   String?
+  application     Application? @relation(fields: [applicationId], references: [id])
+  events          ApplicationEvent[]
+
+  @@index([userId])
+  @@index([threadId])
+  @@index([applicationId])
+}
+
+model Application {
+  id              String           @id @default(cuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company         String
+  role            String?
+  stage           ApplicationStage @default(Applied)
+  appliedAt       DateTime?
+  lastActivityAt  DateTime         @default(now())
+  threadIds       String[]
+  atsProvider     String?
+  recruiter       RecruiterContact?
+  emails          EmailMessage[]
+  events          ApplicationEvent[]
+  followUps       FollowUpSuggestion[]
+  enrichedContacts EnrichedContact[]
+  outreachMessages OutreachMessage[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([userId, stage])
+  @@index([userId, company])
+}
+
+model ApplicationEvent {
+  id            String           @id @default(cuid())
+  applicationId String
+  application   Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  emailId       String?
+  email         EmailMessage?    @relation(fields: [emailId], references: [id])
+  stage         ApplicationStage
+  emailType     EmailType
+  summary       String?
+  occurredAt    DateTime
+  createdAt     DateTime         @default(now())
+
+  @@index([applicationId])
+}
+
+model RecruiterContact {
+  id            String      @id @default(cuid())
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  name          String?
+  email         String?
+  lastSeenAt    DateTime    @default(now())
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model FollowUpSuggestion {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  reason        String
+  dueAt         DateTime
+  dismissed     Boolean     @default(false)
+  completed     Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([userId, dismissed, completed])
+  @@index([applicationId])
+}
+
+// ─── Enrichment & Outreach ────────────────────────────────────────────────────
+
+enum EnrichmentStatus {
+  pending
+  enriched
+  partial
+  not_found
+  error
+}
+
+enum OutreachChannel {
+  email
+  linkedin
+}
+
+enum OutreachStatus {
+  draft
+  sent
+  replied
+  bounced
+  failed
+}
+
+enum EnrichmentProvider {
+  apollo
+  hunter
+  pdl
+  proxycurl
+  lusha
+  contactout
+  fullenrich
+  snovio
+  zerobounce
+  mixrank
+  icypeas
+  leadmagic
+}
+
+model EnrichedContact {
+  id                String            @id @default(cuid())
+  applicationId     String
+  application       Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  userId            String
+
+  // Identity
+  firstName         String?
+  lastName          String?
+  fullName          String?
+  title             String?
+  department        String?
+  seniority         String?
+
+  // Contact info
+  email             String?
+  emailVerified     Boolean           @default(false)
+  emailSource       EnrichmentProvider?
+  linkedinUrl       String?
+  linkedinSource    EnrichmentProvider?
+  twitterHandle     String?
+  phone             String?
+
+  // Company context
+  company           String
+  companyDomain     String?
+  companyLinkedinUrl String?
+
+  enrichmentStatus  EnrichmentStatus  @default(pending)
+  enrichedAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  attempts          EnrichmentAttempt[]
+  messages          OutreachMessage[]
+
+  @@index([applicationId])
+  @@index([userId])
+  @@index([email])
+}
+
+model EnrichmentAttempt {
+  id           String             @id @default(cuid())
+  contactId    String
+  contact      EnrichedContact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  provider     EnrichmentProvider
+  field        String             // "email" | "linkedin" | "search"
+  status       String             // "hit" | "miss" | "error"
+  responseMs   Int?
+  creditCost   Float?
+  rawResponse  Json?
+  createdAt    DateTime           @default(now())
+
+  @@index([contactId])
+}
+
+model OutreachTemplate {
+  id        String          @id @default(cuid())
+  userId    String
+  name      String
+  channel   OutreachChannel
+  subject   String?
+  body      String          @db.Text
+  isDefault Boolean         @default(false)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  messages  OutreachMessage[]
+
+  @@index([userId])
+}
+
+model OutreachMessage {
+  id                  String          @id @default(cuid())
+  contactId           String
+  contact             EnrichedContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  applicationId       String
+  application         Application     @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  templateId          String?
+  template            OutreachTemplate? @relation(fields: [templateId], references: [id])
+  userId              String
+
+  channel             OutreachChannel
+  subject             String?
+  body                String          @db.Text
+  status              OutreachStatus  @default(draft)
+
+  sentAt              DateTime?
+  repliedAt           DateTime?
+  phantomBusterJobId  String?
+  linkedinThreadId    String?
+  errorMessage        String?
+
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  @@index([contactId])
+  @@index([applicationId])
+  @@index([userId])
+}
