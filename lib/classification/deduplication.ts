@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { requirePrisma } from "@/lib/prisma";
 import type { ClassificationResult, ParsedEmail } from "@/types";
 
 function normalizeCompany(name: string): string {
@@ -29,6 +29,7 @@ export async function findExistingApplication(
 ): Promise<string | null> {
   if (!classification.company) return null;
 
+  const prisma = requirePrisma();
   // First: check if this thread already belongs to an application
   const threadMatch = await prisma.application.findFirst({
     where: {

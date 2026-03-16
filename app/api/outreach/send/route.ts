@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { requirePrisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/outreach/email";
 import { sendLinkedInMessage } from "@/lib/outreach/phantombuster";
 import { createOutreachSheet } from "@/lib/sheets/outreach-sheet";
@@ -9,6 +9,7 @@ export async function POST(request: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const prisma = requirePrisma();
   const body = await request.json() as {
     messageId: string;
     subject?: string;

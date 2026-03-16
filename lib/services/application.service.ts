@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { requirePrisma } from "@/lib/prisma";
 import { findExistingApplication } from "@/lib/classification/deduplication";
 import type { ClassificationResult, ParsedEmail, ApplicationStage } from "@/types";
 
@@ -28,6 +28,7 @@ export async function upsertApplication(
   email: ParsedEmail,
   classification: ClassificationResult
 ): Promise<string> {
+  const prisma = requirePrisma();
   const existingId = await findExistingApplication(userId, email, classification);
 
   if (existingId) {
@@ -42,6 +43,7 @@ async function createApplication(
   email: ParsedEmail,
   classification: ClassificationResult
 ): Promise<string> {
+  const prisma = requirePrisma();
   const company = classification.company ?? extractCompanyFromEmail(email);
 
   if (!company) {
@@ -101,6 +103,7 @@ async function updateApplication(
   email: ParsedEmail,
   classification: ClassificationResult
 ): Promise<string> {
+  const prisma = requirePrisma();
   const application = await prisma.application.findUnique({
     where: { id: applicationId },
     include: { recruiter: true },
@@ -183,6 +186,7 @@ async function storeEmailMessage(
   classification: ClassificationResult,
   applicationId: string | null
 ): Promise<string> {
+  const prisma = requirePrisma();
   await prisma.emailMessage.upsert({
     where: { id: email.id },
     create: {
@@ -244,6 +248,7 @@ export async function getApplicationsForUser(
   userId: string,
   filters?: { stage?: ApplicationStage }
 ) {
+  const prisma = requirePrisma();
   return prisma.application.findMany({
     where: {
       userId,
@@ -264,6 +269,7 @@ export async function getApplicationsForUser(
 }
 
 export async function getApplicationById(userId: string, applicationId: string) {
+  const prisma = requirePrisma();
   return prisma.application.findFirst({
     where: { id: applicationId, userId },
     include: {
@@ -287,6 +293,7 @@ export async function getApplicationById(userId: string, applicationId: string) 
 }
 
 export async function getDashboardStats(userId: string) {
+  const prisma = requirePrisma();
   const [counts, pendingFollowUps] = await Promise.all([
     prisma.application.groupBy({
       by: ["stage"],

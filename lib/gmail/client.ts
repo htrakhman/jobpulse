@@ -1,5 +1,5 @@
 import { google } from "googleapis";
-import { prisma } from "@/lib/prisma";
+import { requirePrisma } from "@/lib/prisma";
 
 export function createOAuth2Client() {
   return new google.auth.OAuth2(
@@ -30,6 +30,7 @@ export function getAuthUrl(options?: {
 }
 
 export async function getAuthForUser(userId: string) {
+  const prisma = requirePrisma();
   const account = await prisma.connectedAccount.findUnique({
     where: { userId },
   });

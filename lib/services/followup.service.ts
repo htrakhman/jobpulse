@@ -1,9 +1,10 @@
-import { prisma } from "@/lib/prisma";
+import { requirePrisma } from "@/lib/prisma";
 
 const FOLLOW_UP_DAYS_APPLIED = 7;
 const FOLLOW_UP_DAYS_WAITING = 10;
 
 export async function generateFollowUpSuggestions(userId: string): Promise<void> {
+  const prisma = requirePrisma();
   const now = new Date();
 
   const applications = await prisma.application.findMany({
@@ -64,6 +65,7 @@ function buildFollowUpReason(
 }
 
 export async function dismissFollowUp(userId: string, followUpId: string): Promise<void> {
+  const prisma = requirePrisma();
   await prisma.followUpSuggestion.update({
     where: { id: followUpId, userId },
     data: { dismissed: true },
@@ -71,6 +73,7 @@ export async function dismissFollowUp(userId: string, followUpId: string): Promi
 }
 
 export async function completeFollowUp(userId: string, followUpId: string): Promise<void> {
+  const prisma = requirePrisma();
   await prisma.followUpSuggestion.update({
     where: { id: followUpId, userId },
     data: { completed: true },
@@ -78,6 +81,7 @@ export async function completeFollowUp(userId: string, followUpId: string): Prom
 }
 
 export async function getFollowUpSuggestions(userId: string) {
+  const prisma = requirePrisma();
   return prisma.followUpSuggestion.findMany({
     where: { userId, dismissed: false, completed: false },
     include: {

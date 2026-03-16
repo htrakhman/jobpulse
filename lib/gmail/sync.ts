@@ -2,7 +2,7 @@ import { getGmailClientForUser } from "./client";
 import { parseGmailMessage } from "./parser";
 import { classifyEmail } from "@/lib/classification";
 import { upsertApplication } from "@/lib/services/application.service";
-import { prisma } from "@/lib/prisma";
+import { requirePrisma } from "@/lib/prisma";
 
 function buildJobSearchQuery(daysBack: number): string {
   return `subject:(application OR interview OR offer OR rejection OR hiring OR "thank you for applying" OR "availability request" OR assessment OR "next steps") newer_than:${daysBack}d`;
@@ -22,6 +22,7 @@ export async function syncInbox(
   userId: string,
   options?: { daysBack?: number; maxMessages?: number }
 ): Promise<SyncResult> {
+  const prisma = requirePrisma();
   const gmail = await getGmailClientForUser(userId);
   const result: SyncResult = { processed: 0, classified: 0, applications: 0, errors: 0 };
   const daysBack = options?.daysBack ?? 180;
@@ -100,6 +101,7 @@ export async function syncInbox(
 }
 
 export async function syncFromHistory(userId: string, historyId: string): Promise<SyncResult> {
+  const prisma = requirePrisma();
   const gmail = await getGmailClientForUser(userId);
   const result: SyncResult = { processed: 0, classified: 0, applications: 0, errors: 0 };
 

@@ -5,11 +5,13 @@ import { createOAuth2Client } from "@/lib/gmail/client";
 import { setupGmailWatch } from "@/lib/gmail/pubsub";
 import { syncInbox } from "@/lib/gmail/sync";
 import { generateFollowUpSuggestions } from "@/lib/services/followup.service";
-import { prisma } from "@/lib/prisma";
+import { requirePrisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   const { userId } = await auth();
   if (!userId) return redirect("/sign-in");
+
+  const prisma = requirePrisma();
 
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
@@ -33,9 +35,11 @@ export async function GET(request: NextRequest) {
     const redirectUrl = new URL(returnTo, process.env.NEXT_PUBLIC_APP_URL);
     if (error === "access_denied") {
       redirectUrl.searchParams.set("error", "gmail_access_denied");
-      return redirect(redirectUrl.pathname + "?" + redirectUrl.searchParams.toString());
+    } else if (error === "redirect_uri_mismatch") {
+      redirectUrl.searchParams.set("error", "redirect_uri_mismatch");
+    } else {
+      redirectUrl.searchParams.set("error", "gmail_connect_failed");
     }
-    redirectUrl.searchParams.set("error", "gmail_connect_failed");
     return redirect(redirectUrl.pathname + "?" + redirectUrl.searchParams.toString());
   }
 
@@ -117,6 +121,9 @@ export async function GET(request: NextRequest) {
     return redirect(redirectUrl.pathname + "?" + redirectUrl.searchParams.toString());
   } catch (err) {
     console.error("[gmail/connect/callback] Error:", err);
-    return redirect("/dashboard?error=gmail_connect_failed");
+    const msg = err instanceof Error ? err.message : String(err);
+    const redirectUrl = new URL("/dashboard", process.env.NEXT_PUBLIC_APP_URL);
+    redirectUrl.searchParams.set("error", msg.includes("redirect_uri_mismatch") ? "redirect_uri_mismatch" : "gmail_connect_failed");
+    return redirect(redirectUrl.pathname + "?" + redirectUrl.searchParams.toString());
   }
 }

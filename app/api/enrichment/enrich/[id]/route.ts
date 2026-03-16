@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { requirePrisma } from "@/lib/prisma";
 import { runEnrichmentWaterfall } from "@/lib/enrichment/waterfall";
 
 // Standard enrichment (non-streaming)
@@ -11,6 +11,7 @@ export async function POST(
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const prisma = requirePrisma();
   const { id: contactId } = await params;
 
   // Verify ownership
@@ -39,6 +40,7 @@ export async function GET(
   const { userId } = await auth();
   if (!userId) return new Response("Unauthorized", { status: 401 });
 
+  const prisma = requirePrisma();
   const { id: contactId } = await params;
 
   const contact = await prisma.enrichedContact.findFirst({

@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 export function ConnectGmailBanner() {
   return (
     <div className="border border-blue-200 bg-blue-50 rounded-xl p-6 text-center mb-8">
@@ -10,12 +8,12 @@ export function ConnectGmailBanner() {
         JobPulse will scan your inbox for job-related emails and automatically populate
         your dashboard. Only job emails are read and stored.
       </p>
-      <Link
+      <a
         href="/api/gmail/connect"
         className="inline-flex items-center gap-2 bg-gray-900 text-white px-6 py-3 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
       >
         Connect Gmail
-      </Link>
+      </a>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { requirePrisma } from "@/lib/prisma";
 import { syncFromHistory } from "@/lib/gmail/sync";
 import { generateFollowUpSuggestions } from "@/lib/services/followup.service";
 
@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid notification" }, { status: 400 });
     }
 
+    const prisma = requirePrisma();
     // Find the user with this Gmail address
     const account = await prisma.connectedAccount.findFirst({
       where: { email: emailAddress },

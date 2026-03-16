@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { requirePrisma } from "@/lib/prisma";
 import { sendLinkedInMessage } from "@/lib/outreach/phantombuster";
 import { createOutreachSheet } from "@/lib/sheets/outreach-sheet";
 
@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const prisma = requirePrisma();
   const contacts = await prisma.enrichedContact.findMany({
     where: {
       id: { in: contactIds },

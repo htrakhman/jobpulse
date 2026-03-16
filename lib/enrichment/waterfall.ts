@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { requirePrisma } from "@/lib/prisma";
 import type { WaterfallStep, WaterfallResult, PersonResult, ProviderName } from "./types";
 import { apolloProvider } from "./providers/apollo";
 import { hunterProvider } from "./providers/hunter";
@@ -131,6 +131,7 @@ export async function runEnrichmentWaterfall(
   contactId: string,
   onProgress?: WaterfallProgressCallback
 ): Promise<WaterfallResult> {
+  const prisma = requirePrisma();
   const contact = await prisma.enrichedContact.findUnique({
     where: { id: contactId },
   });

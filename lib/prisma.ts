@@ -2,18 +2,35 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
+  prisma: PrismaClient | null | undefined;
 };
 
-function createPrismaClient() {
-  // PrismaPg accepts a connection string or PoolConfig directly
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
-  return new PrismaClient({
-    adapter,
-    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-  });
+function createPrismaClient(): PrismaClient | null {
+  const url = process.env.DATABASE_URL?.trim();
+  if (!url) return null;
+  try {
+    const adapter = new PrismaPg({ connectionString: url });
+    return new PrismaClient({
+      adapter,
+      log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+    });
+  } catch {
+    return null;
+  }
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+function getPrisma(): PrismaClient | null {
+  if (globalForPrisma.prisma !== undefined) return globalForPrisma.prisma;
+  const client = createPrismaClient();
+  if (process.env.NODE_ENV !== "production" && client) globalForPrisma.prisma = client;
+  else globalForPrisma.prisma = client;
+  return client;
+}
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+export const prisma = getPrisma();
+
+/** Use when you need a guaranteed client - throws if DB not configured */
+export function requirePrisma(): PrismaClient {
+  if (!prisma) throw new Error("Database not configured. Set DATABASE_URL in .env.local");
+  return prisma;
+}
