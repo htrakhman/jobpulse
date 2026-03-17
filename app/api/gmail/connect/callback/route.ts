@@ -124,6 +124,7 @@ export async function GET(request: NextRequest) {
     const msg = err instanceof Error ? err.message : String(err);
     const redirectUrl = new URL("/dashboard", process.env.NEXT_PUBLIC_APP_URL);
     redirectUrl.searchParams.set("error", msg.includes("redirect_uri_mismatch") ? "redirect_uri_mismatch" : "gmail_connect_failed");
+    redirectUrl.searchParams.set("gmailPrompted", "1");
     return redirect(redirectUrl.pathname + "?" + redirectUrl.searchParams.toString());
   }
 }

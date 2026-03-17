@@ -157,7 +157,7 @@ npm run dev`}
     ) ?? false) ||
     (user?.email?.toLowerCase().endsWith("@gmail.com") ?? false);
   const hasAttemptedAutoPrompt = params.gmailPrompted === "1";
-  const hasBlockingError = params.error === "gmail_access_denied";
+  const hasBlockingError = !!params.error;
 
   if (isGoogleAuthUser && !connectedAccount && !hasAttemptedAutoPrompt && !hasBlockingError) {
     redirect(
