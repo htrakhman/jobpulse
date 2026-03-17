@@ -83,8 +83,7 @@ npm run dev`}
             <ol className="text-amber-800 text-sm space-y-2 list-decimal list-inside mb-3">
               <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="underline">Google Cloud Credentials</a></li>
               <li>Click your OAuth 2.0 Client ID (Web application)</li>
-              <li>Under <strong>Authorized redirect URIs</strong>, add exactly: <code className="bg-amber-100 px-1 rounded block mt-1">http://localhost:3000/api/gmail/connect/callback</code></li>
-              <li>If your app runs on port 3001, also add: <code className="bg-amber-100 px-1 rounded block mt-1">http://localhost:3001/api/gmail/connect/callback</code></li>
+              <li>Under <strong>Authorized redirect URIs</strong>, add exactly: <code className="bg-amber-100 px-1 rounded block mt-1">{process.env.NEXT_PUBLIC_APP_URL}/api/gmail/connect/callback</code></li>
               <li>Save, wait 1–2 minutes, then try Connect Gmail again</li>
             </ol>
           </div>
@@ -96,7 +95,7 @@ npm run dev`}
               <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="underline">Google Cloud Console</a></li>
               <li>APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID</li>
               <li>Application type: Web application</li>
-              <li>Authorized redirect URI: <code className="bg-amber-100 px-1 rounded">http://localhost:3000/api/gmail/connect/callback</code></li>
+              <li>Authorized redirect URI: <code className="bg-amber-100 px-1 rounded">{process.env.NEXT_PUBLIC_APP_URL}/api/gmail/connect/callback</code></li>
               <li>Copy Client ID and Client Secret</li>
               <li>Add to .env.local: <code className="bg-amber-100 px-1 rounded">GOOGLE_CLIENT_ID=...</code> and <code className="bg-amber-100 px-1 rounded">GOOGLE_CLIENT_SECRET=...</code></li>
               <li>Restart dev server</li>
@@ -230,11 +229,11 @@ npm run dev`}
             : params.error === "google_oauth_missing"
             ? "Google OAuth is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env.local (from Google Cloud Console → APIs & Services → Credentials)."
             : params.error === "redirect_uri_mismatch"
-            ? "Redirect URI mismatch. In Google Cloud Console → Credentials → your OAuth client, add this exact redirect URI: http://localhost:3000/api/gmail/connect/callback"
+            ? `Redirect URI mismatch. In Google Cloud Console → Credentials → your OAuth client, add this exact redirect URI: ${process.env.NEXT_PUBLIC_APP_URL}/api/gmail/connect/callback`
             : params.error === "gmail_access_denied"
             ? "Gmail access was denied. Add your account as an OAuth test user in Google Cloud (OAuth consent screen → Test users), then try again."
             : params.error === "gmail_connect_failed"
-            ? "Failed to connect Gmail. Check: (1) Redirect URI in Google Cloud matches http://localhost:3000/api/gmail/connect/callback, (2) Your email is added as a test user if app is in testing mode, (3) Gmail API is enabled."
+            ? `Failed to connect Gmail. Check: (1) Redirect URI in Google Cloud matches ${process.env.NEXT_PUBLIC_APP_URL}/api/gmail/connect/callback, (2) Your email is added as a test user if app is in testing mode, (3) Gmail API is enabled.`
             : "Something went wrong."}
         </div>
       )}
@@ -245,8 +244,7 @@ npm run dev`}
           <ol className="text-amber-800 text-sm space-y-2 list-decimal list-inside mb-3">
             <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="underline">Google Cloud Credentials</a></li>
             <li>Click your OAuth 2.0 Client ID (Web application)</li>
-            <li>Under <strong>Authorized redirect URIs</strong>, add exactly: <code className="bg-amber-100 px-1 rounded block mt-1">http://localhost:3000/api/gmail/connect/callback</code></li>
-            <li>If your app runs on port 3001, also add: <code className="bg-amber-100 px-1 rounded block mt-1">http://localhost:3001/api/gmail/connect/callback</code></li>
+            <li>Under <strong>Authorized redirect URIs</strong>, add exactly: <code className="bg-amber-100 px-1 rounded block mt-1">{process.env.NEXT_PUBLIC_APP_URL}/api/gmail/connect/callback</code></li>
             <li>Save, wait 1–2 minutes, then try Connect Gmail again</li>
           </ol>
         </div>
