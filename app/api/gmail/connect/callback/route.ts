@@ -43,6 +43,8 @@ export async function GET(request: NextRequest) {
     return redirect(redirectUrl.pathname + "?" + redirectUrl.searchParams.toString());
   }
 
+  let finalRedirectPath: string;
+
   try {
     const oauth2Client = createOAuth2Client();
     const { tokens } = await oauth2Client.getToken(code);
@@ -118,13 +120,15 @@ export async function GET(request: NextRequest) {
     redirectUrl.searchParams.set("scan", "completed");
     redirectUrl.searchParams.set("range", "90");
     redirectUrl.searchParams.set("applications", String(result.applications));
-    return redirect(redirectUrl.pathname + "?" + redirectUrl.searchParams.toString());
+    finalRedirectPath = redirectUrl.pathname + "?" + redirectUrl.searchParams.toString();
   } catch (err) {
     console.error("[gmail/connect/callback] Error:", err);
     const msg = err instanceof Error ? err.message : String(err);
     const redirectUrl = new URL("/dashboard", process.env.NEXT_PUBLIC_APP_URL);
     redirectUrl.searchParams.set("error", msg.includes("redirect_uri_mismatch") ? "redirect_uri_mismatch" : "gmail_connect_failed");
     redirectUrl.searchParams.set("gmailPrompted", "1");
-    return redirect(redirectUrl.pathname + "?" + redirectUrl.searchParams.toString());
+    finalRedirectPath = redirectUrl.pathname + "?" + redirectUrl.searchParams.toString();
   }
+
+  return redirect(finalRedirectPath);
 }
