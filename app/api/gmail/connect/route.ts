@@ -5,20 +5,21 @@ import { getAuthUrl } from "@/lib/gmail/client";
 import { NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) {
+    return redirect("/sign-in");
+  }
+
+  if (!prisma) {
+    return redirect("/dashboard?error=db_required&gmailPrompted=1");
+  }
+
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return redirect("/dashboard?error=google_oauth_missing&gmailPrompted=1");
+  }
+
+  let url: string;
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return redirect("/sign-in");
-    }
-
-    if (!prisma) {
-      return redirect("/dashboard?error=db_required&gmailPrompted=1");
-    }
-
-    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-      return redirect("/dashboard?error=google_oauth_missing&gmailPrompted=1");
-    }
-
     const user = await currentUser();
     const { searchParams } = new URL(request.url);
     const auto = searchParams.get("auto") === "1";
@@ -41,13 +42,14 @@ export async function GET(request: NextRequest) {
       JSON.stringify({ auto, returnTo })
     ).toString("base64url");
 
-    const url = getAuthUrl({
+    url = getAuthUrl({
       state,
       loginHint: user?.emailAddresses[0]?.emailAddress,
     });
-    return redirect(url);
   } catch (err) {
     console.error("[gmail/connect] Error:", err);
     return redirect("/dashboard?error=gmail_connect_failed&gmailPrompted=1");
   }
+
+  return redirect(url);
 }
