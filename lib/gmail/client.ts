@@ -1,11 +1,17 @@
 import { google } from "googleapis";
 import { requirePrisma } from "@/lib/prisma";
 
+function getAppUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  return `https://${raw}`;
+}
+
 export function createOAuth2Client() {
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID!,
     process.env.GOOGLE_CLIENT_SECRET!,
-    `${process.env.NEXT_PUBLIC_APP_URL}/api/gmail/connect/callback`
+    `${getAppUrl()}/api/gmail/connect/callback`
   );
 }
 
