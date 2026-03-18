@@ -10,7 +10,7 @@ const STAGE_CONFIG: Record<
     className: "bg-blue-50 text-blue-700 border-blue-200",
   },
   Waiting: {
-    label: "Waiting",
+    label: "Awaiting Response",
     className: "bg-gray-50 text-gray-600 border-gray-200",
   },
   Interviewing: {
@@ -22,7 +22,7 @@ const STAGE_CONFIG: Record<
     className: "bg-orange-50 text-orange-700 border-orange-200",
   },
   Offer: {
-    label: "Offer",
+    label: "Offer Received",
     className: "bg-green-50 text-green-700 border-green-200",
   },
   Rejected: {
