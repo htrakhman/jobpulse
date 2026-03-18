@@ -5,10 +5,10 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 const STAGES = [
   { value: "", label: "All" },
   { value: "Applied", label: "Applied" },
-  { value: "Waiting", label: "Waiting" },
+  { value: "Waiting", label: "Awaiting Response" },
   { value: "Interviewing", label: "Interviewing" },
   { value: "Assessment", label: "Assessment" },
-  { value: "Offer", label: "Offer" },
+  { value: "Offer", label: "Offer Received" },
   { value: "Rejected", label: "Rejected" },
   { value: "Closed", label: "Closed" },
 ];
