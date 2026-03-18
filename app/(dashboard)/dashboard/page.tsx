@@ -234,35 +234,6 @@ npm run dev`}
           {params.applications === "1" ? "" : "s"}.
         </div>
       )}
-      {params.error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-          {params.error === "db_required"
-            ? "A database is required to connect Gmail. See the setup steps below."
-            : params.error === "google_oauth_missing"
-            ? "Google OAuth is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env.local (from Google Cloud Console → APIs & Services → Credentials)."
-            : params.error === "redirect_uri_mismatch"
-            ? "Redirect URI mismatch. In Google Cloud Console → Credentials → your OAuth client, add this exact redirect URI: http://localhost:3000/api/gmail/connect/callback"
-            : params.error === "gmail_access_denied"
-            ? "Gmail access was denied. Add your account as an OAuth test user in Google Cloud (OAuth consent screen → Test users), then try again."
-            : params.error === "gmail_connect_failed"
-            ? "Failed to connect Gmail. Check: (1) Redirect URI in Google Cloud matches http://localhost:3000/api/gmail/connect/callback, (2) Your email is added as a test user if app is in testing mode, (3) Gmail API is enabled."
-            : "Something went wrong."}
-        </div>
-      )}
-
-      {(params.error === "redirect_uri_mismatch" || params.error === "gmail_connect_failed") && (
-        <div className="mb-6 p-6 bg-amber-50 border border-amber-200 rounded-xl">
-          <h3 className="font-semibold text-amber-900 mb-2">Fix Gmail connection</h3>
-          <ol className="text-amber-800 text-sm space-y-2 list-decimal list-inside mb-3">
-            <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="underline">Google Cloud Credentials</a></li>
-            <li>Click your OAuth 2.0 Client ID (Web application)</li>
-            <li>Under <strong>Authorized redirect URIs</strong>, add exactly: <code className="bg-amber-100 px-1 rounded block mt-1">http://localhost:3000/api/gmail/connect/callback</code></li>
-            <li>If your app runs on port 3001, also add: <code className="bg-amber-100 px-1 rounded block mt-1">http://localhost:3001/api/gmail/connect/callback</code></li>
-            <li>Save, wait 1–2 minutes, then try Connect Gmail again</li>
-          </ol>
-        </div>
-      )}
-
       {/* Connect banner */}
       {!isConnected && <ConnectGmailBanner />}
 
