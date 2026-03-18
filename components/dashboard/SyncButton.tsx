@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
 const WINDOW_OPTIONS = [
@@ -11,11 +11,24 @@ const WINDOW_OPTIONS = [
   { value: 365, label: "365 days" },
 ];
 
-export function SyncButton() {
+interface SyncButtonProps {
+  selectedWindow: number;
+  scannedWindow: number;
+}
+
+export function SyncButton({ selectedWindow, scannedWindow }: SyncButtonProps) {
   const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState<string | null>(null);
-  const [daysBack, setDaysBack] = useState(180);
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const needsRescan = selectedWindow > scannedWindow;
+
+  function handleWindowChange(nextWindow: number) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("window", String(nextWindow));
+    router.push(`${pathname}?${params.toString()}`);
+  }
 
   async function handleSync() {
     setSyncing(true);
@@ -24,7 +37,7 @@ export function SyncButton() {
       const res = await fetch("/api/gmail/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ daysBack }),
+        body: JSON.stringify({ daysBack: selectedWindow }),
       });
       const data = await res.json();
       if (data.success) {
@@ -50,10 +63,10 @@ export function SyncButton() {
         <span className="text-sm text-gray-500 hidden md:inline">{result}</span>
       )}
       <label className="text-xs text-gray-500 hidden md:flex items-center gap-2">
-        Scan window
+        Date window
         <select
-          value={daysBack}
-          onChange={(e) => setDaysBack(Number(e.target.value))}
+          value={selectedWindow}
+          onChange={(e) => handleWindowChange(Number(e.target.value))}
           className="border border-gray-300 rounded-md px-2 py-1 text-xs bg-white text-gray-700"
           disabled={syncing}
         >
@@ -64,24 +77,26 @@ export function SyncButton() {
           ))}
         </select>
       </label>
-      <Button
-        onClick={handleSync}
-        disabled={syncing}
-        variant="outline"
-        size="sm"
-        className="border-gray-300"
-      >
-        {syncing ? (
-          <span className="flex items-center gap-2">
-            <span className="inline-block w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-            Syncing…
-          </span>
-        ) : (
-          "Rescan inbox"
-        )}
-      </Button>
+      {needsRescan && (
+        <Button
+          onClick={handleSync}
+          disabled={syncing}
+          variant="outline"
+          size="sm"
+          className="border-gray-300"
+        >
+          {syncing ? (
+            <span className="flex items-center gap-2">
+              <span className="inline-block w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+              Syncing…
+            </span>
+          ) : (
+            `Rescan to ${selectedWindow}d`
+          )}
+        </Button>
+      )}
       <span className="hidden xl:inline text-xs text-gray-400">
-        Need older results? Increase window, then rescan.
+        Scanned so far: {scannedWindow}d
       </span>
     </div>
   );
