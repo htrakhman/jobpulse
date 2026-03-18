@@ -90,6 +90,7 @@ interface FollowUpSectionProps {
 
 export function FollowUpSection({ suggestions: initial }: FollowUpSectionProps) {
   const [suggestions, setSuggestions] = useState(initial);
+  const [expanded, setExpanded] = useState(false);
 
   function remove(id: string) {
     setSuggestions((prev) => prev.filter((s) => s.id !== id));
@@ -99,19 +100,30 @@ export function FollowUpSection({ suggestions: initial }: FollowUpSectionProps) 
 
   return (
     <div className="mb-6">
-      <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
-        Follow-up Suggestions
-      </h2>
-      <div className="flex flex-col gap-2">
-        {suggestions.map((s) => (
-          <FollowUpCard
-            key={s.id}
-            suggestion={s}
-            onDismiss={remove}
-            onComplete={remove}
-          />
-        ))}
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+          Follow-up Suggestions ({suggestions.length})
+        </h2>
+        <button
+          type="button"
+          onClick={() => setExpanded((prev) => !prev)}
+          className="text-sm font-medium text-gray-600 hover:text-gray-900"
+        >
+          {expanded ? "Hide" : "Show"}
+        </button>
       </div>
+      {expanded && (
+        <div className="flex flex-col gap-2">
+          {suggestions.map((s) => (
+            <FollowUpCard
+              key={s.id}
+              suggestion={s}
+              onDismiss={remove}
+              onComplete={remove}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
