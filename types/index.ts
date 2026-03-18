@@ -73,7 +73,9 @@ export interface ApplicationEventSummary {
 
 export interface DashboardStats {
   total: number;
-  active: number;
+  applied: number;
+  waiting: number;
+  assessment: number;
   interviewing: number;
   offers: number;
   rejected: number;
