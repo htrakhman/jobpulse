@@ -65,7 +65,7 @@ function windowDaysToMs(days: number): number {
   return days * 24 * 60 * 60 * 1000;
 }
 
-export function ApplicationTable({ applications }: ApplicationTableProps) {
+export function ApplicationTable({ applications, windowDays }: ApplicationTableProps) {
   const [companyFilter, setCompanyFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
