@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -35,7 +36,113 @@ interface ApplicationTableProps {
   applications: Application[];
 }
 
+type SortKey =
+  | "company"
+  | "role"
+  | "stage"
+  | "appliedAt"
+  | "lastActivityAt"
+  | "latestUpdate";
+
+const STAGE_ORDER: ApplicationStage[] = [
+  "Applied",
+  "Waiting",
+  "Assessment",
+  "Interviewing",
+  "Offer",
+  "Rejected",
+  "Closed",
+];
+
+function toTime(value: string | null): number {
+  if (!value) return 0;
+  const t = new Date(value).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+function windowDaysToMs(days: number): number {
+  return days * 24 * 60 * 60 * 1000;
+}
+
 export function ApplicationTable({ applications }: ApplicationTableProps) {
+  const [companyFilter, setCompanyFilter] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [stageFilter, setStageFilter] = useState("");
+  const [latestFilter, setLatestFilter] = useState("");
+  const [appliedWindow, setAppliedWindow] = useState("all");
+  const [activityWindow, setActivityWindow] = useState("all");
+  const [sortKey, setSortKey] = useState<SortKey>("lastActivityAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === "company" || key === "role" || key === "stage" ? "asc" : "desc");
+  }
+
+  const filteredAndSorted = useMemo(() => {
+    const now = Date.now();
+    const appliedDays = Number(appliedWindow);
+    const activityDays = Number(activityWindow);
+    const hasAppliedWindow = Number.isFinite(appliedDays) && appliedDays > 0;
+    const hasActivityWindow = Number.isFinite(activityDays) && activityDays > 0;
+
+    const filtered = applications.filter((app) => {
+      const latestSummary = app.events[0]?.summary ?? "";
+      if (
+        companyFilter &&
+        !app.company.toLowerCase().includes(companyFilter.toLowerCase())
+      ) {
+        return false;
+      }
+      if (roleFilter && !(app.role ?? "").toLowerCase().includes(roleFilter.toLowerCase())) {
+        return false;
+      }
+      if (stageFilter && app.stage !== stageFilter) {
+        return false;
+      }
+      if (latestFilter && !latestSummary.toLowerCase().includes(latestFilter.toLowerCase())) {
+        return false;
+      }
+      if (hasAppliedWindow && app.appliedAt) {
+        if (now - toTime(app.appliedAt) > windowDaysToMs(appliedDays)) return false;
+      } else if (hasAppliedWindow && !app.appliedAt) {
+        return false;
+      }
+      if (hasActivityWindow && now - toTime(app.lastActivityAt) > windowDaysToMs(activityDays)) {
+        return false;
+      }
+      return true;
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      let comp = 0;
+      if (sortKey === "company") comp = a.company.localeCompare(b.company);
+      if (sortKey === "role") comp = (a.role ?? "").localeCompare(b.role ?? "");
+      if (sortKey === "stage") comp = STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage);
+      if (sortKey === "appliedAt") comp = toTime(a.appliedAt) - toTime(b.appliedAt);
+      if (sortKey === "lastActivityAt") comp = toTime(a.lastActivityAt) - toTime(b.lastActivityAt);
+      if (sortKey === "latestUpdate") {
+        comp = (a.events[0]?.summary ?? "").localeCompare(b.events[0]?.summary ?? "");
+      }
+      return sortDir === "asc" ? comp : -comp;
+    });
+    return sorted;
+  }, [
+    applications,
+    companyFilter,
+    roleFilter,
+    stageFilter,
+    latestFilter,
+    appliedWindow,
+    activityWindow,
+    sortKey,
+    sortDir,
+  ]);
+
   if (applications.length === 0) {
     return (
       <div className="text-center py-16 text-gray-400">
@@ -50,17 +157,109 @@ export function ApplicationTable({ applications }: ApplicationTableProps) {
       <Table>
         <TableHeader>
           <TableRow className="bg-gray-50 hover:bg-gray-50">
-            <TableHead className="font-semibold text-gray-700 w-[200px]">Company</TableHead>
-            <TableHead className="font-semibold text-gray-700">Role</TableHead>
-            <TableHead className="font-semibold text-gray-700">Status</TableHead>
-            <TableHead className="font-semibold text-gray-700">Recruiter</TableHead>
-            <TableHead className="font-semibold text-gray-700">Applied</TableHead>
-            <TableHead className="font-semibold text-gray-700">Last Activity</TableHead>
-            <TableHead className="font-semibold text-gray-700">Latest Update</TableHead>
+            <TableHead className="font-semibold text-gray-700 w-[210px]">
+              <button onClick={() => toggleSort("company")} className="hover:text-gray-900">
+                Company
+              </button>
+            </TableHead>
+            <TableHead className="font-semibold text-gray-700">
+              <button onClick={() => toggleSort("role")} className="hover:text-gray-900">
+                Role
+              </button>
+            </TableHead>
+            <TableHead className="font-semibold text-gray-700">
+              <button onClick={() => toggleSort("stage")} className="hover:text-gray-900">
+                Status
+              </button>
+            </TableHead>
+            <TableHead className="font-semibold text-gray-700">People</TableHead>
+            <TableHead className="font-semibold text-gray-700">
+              <button onClick={() => toggleSort("appliedAt")} className="hover:text-gray-900">
+                Applied
+              </button>
+            </TableHead>
+            <TableHead className="font-semibold text-gray-700">
+              <button onClick={() => toggleSort("lastActivityAt")} className="hover:text-gray-900">
+                Last Activity
+              </button>
+            </TableHead>
+            <TableHead className="font-semibold text-gray-700">
+              <button onClick={() => toggleSort("latestUpdate")} className="hover:text-gray-900">
+                Latest Update
+              </button>
+            </TableHead>
+          </TableRow>
+          <TableRow className="bg-white hover:bg-white">
+            <TableHead>
+              <input
+                value={companyFilter}
+                onChange={(e) => setCompanyFilter(e.target.value)}
+                placeholder="Filter company"
+                className="h-8 w-full rounded-md border border-gray-200 px-2 text-xs"
+              />
+            </TableHead>
+            <TableHead>
+              <input
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                placeholder="Filter role"
+                className="h-8 w-full rounded-md border border-gray-200 px-2 text-xs"
+              />
+            </TableHead>
+            <TableHead>
+              <select
+                value={stageFilter}
+                onChange={(e) => setStageFilter(e.target.value)}
+                className="h-8 w-full rounded-md border border-gray-200 px-2 text-xs bg-white"
+              >
+                <option value="">All statuses</option>
+                <option value="Applied">Applied</option>
+                <option value="Waiting">Awaiting Response</option>
+                <option value="Assessment">Assessment</option>
+                <option value="Interviewing">Interviewing</option>
+                <option value="Offer">Offer Received</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Closed">Closed</option>
+              </select>
+            </TableHead>
+            <TableHead className="text-xs text-gray-400">Open app detail</TableHead>
+            <TableHead>
+              <select
+                value={appliedWindow}
+                onChange={(e) => setAppliedWindow(e.target.value)}
+                className="h-8 w-full rounded-md border border-gray-200 px-2 text-xs bg-white"
+              >
+                <option value="all">Any date</option>
+                <option value="30">Last 30d</option>
+                <option value="90">Last 90d</option>
+                <option value="180">Last 180d</option>
+                <option value="365">Last 365d</option>
+              </select>
+            </TableHead>
+            <TableHead>
+              <select
+                value={activityWindow}
+                onChange={(e) => setActivityWindow(e.target.value)}
+                className="h-8 w-full rounded-md border border-gray-200 px-2 text-xs bg-white"
+              >
+                <option value="all">Any date</option>
+                <option value="7">Last 7d</option>
+                <option value="30">Last 30d</option>
+                <option value="90">Last 90d</option>
+              </select>
+            </TableHead>
+            <TableHead>
+              <input
+                value={latestFilter}
+                onChange={(e) => setLatestFilter(e.target.value)}
+                placeholder="Filter update text"
+                className="h-8 w-full rounded-md border border-gray-200 px-2 text-xs"
+              />
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {applications.map((app) => (
+          {filteredAndSorted.map((app) => (
             <TableRow
               key={app.id}
               className="hover:bg-gray-50 cursor-pointer transition-colors"
@@ -87,9 +286,9 @@ export function ApplicationTable({ applications }: ApplicationTableProps) {
                 <StageBadge stage={app.stage} />
               </TableCell>
               <TableCell className="text-gray-500 text-sm">
-                {app.recruiter?.name ?? (
-                  <span className="text-gray-300">—</span>
-                )}
+                <Link href={`/applications/${app.id}`} className="text-blue-600 hover:underline">
+                  Find people
+                </Link>
               </TableCell>
               <TableCell className="text-gray-500 text-sm">
                 {app.appliedAt
@@ -106,6 +305,13 @@ export function ApplicationTable({ applications }: ApplicationTableProps) {
               </TableCell>
             </TableRow>
           ))}
+          {filteredAndSorted.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={7} className="text-center py-8 text-gray-400 text-sm">
+                No rows match the current filters.
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
     </div>
