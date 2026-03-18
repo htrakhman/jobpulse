@@ -127,7 +127,7 @@ npm run dev`}
           </Suspense>
           <span className="text-sm text-gray-500">0 applications</span>
         </div>
-        <ApplicationTable applications={[]} />
+        <ApplicationTable applications={[]} windowDays={selectedWindow} />
       </div>
     );
   }
@@ -168,7 +168,7 @@ npm run dev`}
           </Suspense>
           <span className="text-sm text-gray-500">0 applications</span>
         </div>
-        <ApplicationTable applications={[]} />
+        <ApplicationTable applications={[]} windowDays={selectedWindow} />
       </div>
     );
   }
