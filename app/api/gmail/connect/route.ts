@@ -41,10 +41,12 @@ export async function GET(request: NextRequest) {
         ? await prisma.user.findUnique({ where: { email: userEmail } })
         : null;
       if (existingByEmail) {
-        // Re-link historical row to current Clerk user id.
         await prisma.user.update({
           where: { id: existingByEmail.id },
-          data: { id: userId, gmailAccessRequestedAt: new Date() },
+          data: {
+            email: userEmail || existingByEmail.email,
+            gmailAccessRequestedAt: new Date(),
+          },
         });
       } else {
         await prisma.user.create({
