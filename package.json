@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "auto:push": "node scripts/auto-commit-push.js",
+    "dev:all": "concurrently \"npm run dev\" \"npm run auto:push\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -36,6 +38,8 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "chokidar": "^4.0.3",
+    "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
