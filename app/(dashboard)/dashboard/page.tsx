@@ -17,6 +17,7 @@ import type { ApplicationStage } from "@/types";
 const VALID_STAGES: ApplicationStage[] = [
   "Applied", "Waiting", "Interviewing", "Assessment", "Offer", "Rejected", "Closed",
 ];
+const VALID_WINDOWS = new Set([30, 90, 180, 365]);
 
 interface DashboardPageProps {
   searchParams: Promise<{
@@ -27,6 +28,7 @@ interface DashboardPageProps {
     range?: string;
     applications?: string;
     gmailPrompted?: string;
+    window?: string;
   }>;
 }
 
@@ -40,6 +42,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     params.stage && VALID_STAGES.includes(params.stage as ApplicationStage)
       ? (params.stage as ApplicationStage)
       : undefined;
+  const selectedWindow = VALID_WINDOWS.has(Number(params.window))
+    ? Number(params.window)
+    : 180;
 
   const emptyStats = {
     total: 0,
@@ -216,6 +221,13 @@ npm run dev`}
     ...f,
     dueAt: f.dueAt.toISOString(),
   }));
+  const windowMs = selectedWindow * 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
+  const windowedApps = serializedApps.filter((app) => {
+    const base = app.appliedAt ? new Date(app.appliedAt).getTime() : new Date(app.lastActivityAt).getTime();
+    return nowMs - base <= windowMs;
+  });
+  const scannedWindow = user?.initialScanRangeDays ?? 90;
 
   return (
     <div>
@@ -229,7 +241,9 @@ npm run dev`}
               : "Connect Gmail to start tracking"}
           </p>
         </div>
-        {isConnected && <SyncButton />}
+        {isConnected && (
+          <SyncButton selectedWindow={selectedWindow} scannedWindow={scannedWindow} />
+        )}
       </div>
 
       {/* Notifications */}
@@ -252,7 +266,7 @@ npm run dev`}
       <StatsBar stats={stats} />
 
       {/* Insights */}
-      <DashboardInsights applications={serializedApps} />
+      <DashboardInsights applications={serializedApps} windowDays={selectedWindow} />
 
       {/* Follow-up suggestions */}
       <FollowUpSection suggestions={serializedFollowUps} />
@@ -280,11 +294,11 @@ npm run dev`}
           <StatusFilter />
         </Suspense>
         <span className="text-sm text-gray-500">
-          {applications.length} application{applications.length !== 1 ? "s" : ""}
+          {windowedApps.length} application{windowedApps.length !== 1 ? "s" : ""} in last {selectedWindow}d
         </span>
       </div>
 
-      <ApplicationTable applications={serializedApps} />
+      <ApplicationTable applications={serializedApps} windowDays={selectedWindow} />
     </div>
   );
 }
