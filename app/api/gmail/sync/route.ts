@@ -4,13 +4,19 @@ import { prisma } from "@/lib/prisma";
 import { syncInbox } from "@/lib/gmail/sync";
 import { generateFollowUpSuggestions } from "@/lib/services/followup.service";
 
-export async function POST() {
+const ALLOWED_WINDOWS = new Set([30, 90, 180, 365]);
+
+export async function POST(request: Request) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
+    const body = (await request.json().catch(() => ({}))) as { daysBack?: number };
+    const requestedWindow = Number(body?.daysBack);
+    const daysBack = ALLOWED_WINDOWS.has(requestedWindow) ? requestedWindow : 180;
+
     if (!prisma) {
       return NextResponse.json({ error: "Database not configured" }, { status: 500 });
     }
@@ -26,10 +32,10 @@ export async function POST() {
       }
     }
 
-    const result = await syncInbox(ownerUserId);
+    const result = await syncInbox(ownerUserId, { daysBack });
     await generateFollowUpSuggestions(ownerUserId);
 
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true, daysBack, ...result });
   } catch (err) {
     console.error("[api/gmail/sync] Error:", err);
     return NextResponse.json({ error: "Sync failed" }, { status: 500 });
