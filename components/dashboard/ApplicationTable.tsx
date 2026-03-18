@@ -34,6 +34,7 @@ interface Application {
 
 interface ApplicationTableProps {
   applications: Application[];
+  windowDays: number;
 }
 
 type SortKey =
@@ -69,8 +70,6 @@ export function ApplicationTable({ applications }: ApplicationTableProps) {
   const [roleFilter, setRoleFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
   const [latestFilter, setLatestFilter] = useState("");
-  const [appliedWindow, setAppliedWindow] = useState("all");
-  const [activityWindow, setActivityWindow] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("lastActivityAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -85,13 +84,11 @@ export function ApplicationTable({ applications }: ApplicationTableProps) {
 
   const filteredAndSorted = useMemo(() => {
     const now = Date.now();
-    const appliedDays = Number(appliedWindow);
-    const activityDays = Number(activityWindow);
-    const hasAppliedWindow = Number.isFinite(appliedDays) && appliedDays > 0;
-    const hasActivityWindow = Number.isFinite(activityDays) && activityDays > 0;
+    const windowMs = windowDaysToMs(windowDays);
 
     const filtered = applications.filter((app) => {
       const latestSummary = app.events[0]?.summary ?? "";
+      const baseTime = toTime(app.appliedAt ?? app.lastActivityAt);
       if (
         companyFilter &&
         !app.company.toLowerCase().includes(companyFilter.toLowerCase())
@@ -107,12 +104,7 @@ export function ApplicationTable({ applications }: ApplicationTableProps) {
       if (latestFilter && !latestSummary.toLowerCase().includes(latestFilter.toLowerCase())) {
         return false;
       }
-      if (hasAppliedWindow && app.appliedAt) {
-        if (now - toTime(app.appliedAt) > windowDaysToMs(appliedDays)) return false;
-      } else if (hasAppliedWindow && !app.appliedAt) {
-        return false;
-      }
-      if (hasActivityWindow && now - toTime(app.lastActivityAt) > windowDaysToMs(activityDays)) {
+      if (now - baseTime > windowMs) {
         return false;
       }
       return true;
@@ -137,8 +129,7 @@ export function ApplicationTable({ applications }: ApplicationTableProps) {
     roleFilter,
     stageFilter,
     latestFilter,
-    appliedWindow,
-    activityWindow,
+    windowDays,
     sortKey,
     sortDir,
   ]);
@@ -223,31 +214,8 @@ export function ApplicationTable({ applications }: ApplicationTableProps) {
               </select>
             </TableHead>
             <TableHead className="text-xs text-gray-400">Open app detail</TableHead>
-            <TableHead>
-              <select
-                value={appliedWindow}
-                onChange={(e) => setAppliedWindow(e.target.value)}
-                className="h-8 w-full rounded-md border border-gray-200 px-2 text-xs bg-white"
-              >
-                <option value="all">Any date</option>
-                <option value="30">Last 30d</option>
-                <option value="90">Last 90d</option>
-                <option value="180">Last 180d</option>
-                <option value="365">Last 365d</option>
-              </select>
-            </TableHead>
-            <TableHead>
-              <select
-                value={activityWindow}
-                onChange={(e) => setActivityWindow(e.target.value)}
-                className="h-8 w-full rounded-md border border-gray-200 px-2 text-xs bg-white"
-              >
-                <option value="all">Any date</option>
-                <option value="7">Last 7d</option>
-                <option value="30">Last 30d</option>
-                <option value="90">Last 90d</option>
-              </select>
-            </TableHead>
+            <TableHead className="text-xs text-gray-400">Global window</TableHead>
+            <TableHead className="text-xs text-gray-400">Global window</TableHead>
             <TableHead>
               <input
                 value={latestFilter}
