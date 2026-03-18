@@ -309,7 +309,9 @@ export async function getDashboardStats(userId: string) {
 
   return {
     total: counts.reduce((sum: number, c: { _count: { id: number } }) => sum + c._count.id, 0),
-    active: (stageMap["Applied"] ?? 0) + (stageMap["Waiting"] ?? 0),
+    applied: stageMap["Applied"] ?? 0,
+    waiting: stageMap["Waiting"] ?? 0,
+    assessment: stageMap["Assessment"] ?? 0,
     interviewing: stageMap["Interviewing"] ?? 0,
     offers: stageMap["Offer"] ?? 0,
     rejected: stageMap["Rejected"] ?? 0,
