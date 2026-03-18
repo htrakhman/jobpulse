@@ -154,4 +154,4 @@ const watcher = chokidar.watch(ROOT, {
 watcher.on("change", (p) => scheduleCommit(path.relative(ROOT, p)));
 watcher.on("add", (p) => scheduleCommit(path.relative(ROOT, p)));
 
-console.log("👀 Watching for changes. Auto-commit + push to GitHub (debounce 3s)\n");
+console.log("👀 Watching for changes. Auto-commit + push to GitHub (batched)\n");
