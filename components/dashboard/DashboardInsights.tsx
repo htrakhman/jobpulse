@@ -11,6 +11,7 @@ interface InsightApplication {
 
 interface DashboardInsightsProps {
   applications: InsightApplication[];
+  windowDays: number;
 }
 
 const STAGE_GROUPS: Array<{ key: ApplicationStage; label: string; color: string }> = [
@@ -32,11 +33,18 @@ function weekStart(d: Date) {
   return x;
 }
 
-export function DashboardInsights({ applications }: DashboardInsightsProps) {
-  const total = applications.length;
+export function DashboardInsights({ applications, windowDays }: DashboardInsightsProps) {
+  const now = new Date();
+  const windowMs = windowDays * 24 * 60 * 60 * 1000;
+  const filteredApps = applications.filter((app) => {
+    const source = app.appliedAt ? new Date(app.appliedAt) : new Date(app.lastActivityAt);
+    return now.getTime() - source.getTime() <= windowMs;
+  });
+
+  const total = filteredApps.length;
   const byStage = new Map<ApplicationStage, number>();
   for (const stage of STAGE_GROUPS.map((s) => s.key)) byStage.set(stage, 0);
-  for (const app of applications) byStage.set(app.stage, (byStage.get(app.stage) ?? 0) + 1);
+  for (const app of filteredApps) byStage.set(app.stage, (byStage.get(app.stage) ?? 0) + 1);
 
   const progressedToInterview =
     (byStage.get("Interviewing") ?? 0) + (byStage.get("Offer") ?? 0);
@@ -49,8 +57,7 @@ export function DashboardInsights({ applications }: DashboardInsightsProps) {
     ? (offerCount / progressedToInterview) * 100
     : 0;
 
-  const weeks = 12;
-  const now = new Date();
+  const weeks = Math.max(4, Math.min(26, Math.ceil(windowDays / 7)));
   const thisWeek = weekStart(now);
   const buckets: Array<{ key: string; label: string; count: number }> = [];
   for (let i = weeks - 1; i >= 0; i--) {
@@ -60,7 +67,7 @@ export function DashboardInsights({ applications }: DashboardInsightsProps) {
     buckets.push({ key, label: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }), count: 0 });
   }
   const bucketMap = new Map(buckets.map((b, idx) => [b.key, idx]));
-  for (const app of applications) {
+  for (const app of filteredApps) {
     const source = app.appliedAt ? new Date(app.appliedAt) : new Date(app.lastActivityAt);
     const wk = weekStart(source).toISOString().slice(0, 10);
     const idx = bucketMap.get(wk);
