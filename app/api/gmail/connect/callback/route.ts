@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
     // Ensure user record exists
     const user = await currentUser();
     const userEmail = user?.emailAddresses[0]?.emailAddress ?? gmailEmail;
+    let ownerUserId = userId;
     const existingById = await prisma.user.findUnique({ where: { id: userId } });
     if (existingById) {
       await prisma.user.update({
@@ -71,10 +72,13 @@ export async function GET(request: NextRequest) {
         : null;
 
       if (existingByEmail) {
-        // Re-link historical row to current Clerk user id.
+        ownerUserId = existingByEmail.id;
         await prisma.user.update({
           where: { id: existingByEmail.id },
-          data: { id: userId, gmailAccessRequestedAt: new Date() },
+          data: {
+            email: userEmail || existingByEmail.email,
+            gmailAccessRequestedAt: new Date(),
+          },
         });
       } else {
         await prisma.user.create({
@@ -89,9 +93,9 @@ export async function GET(request: NextRequest) {
 
     // Store connected account
     await prisma.connectedAccount.upsert({
-      where: { userId },
+      where: { userId: ownerUserId },
       create: {
-        userId,
+        userId: ownerUserId,
         email: gmailEmail,
         accessToken: tokens.access_token ?? "",
         refreshToken: tokens.refresh_token ?? "",
@@ -107,25 +111,25 @@ export async function GET(request: NextRequest) {
 
     // Set up Gmail Pub/Sub watch
     try {
-      await setupGmailWatch(userId);
+      await setupGmailWatch(ownerUserId);
     } catch (err) {
       console.warn("[gmail/connect] Could not set up Pub/Sub watch:", err);
     }
 
     // Start initial 90-day scan automatically
     await prisma.user.update({
-      where: { id: userId },
+      where: { id: ownerUserId },
       data: {
         initialScanStartedAt: new Date(),
         initialScanRangeDays: 90,
       },
     });
 
-    const result = await syncInbox(userId, { daysBack: 90 });
-    await generateFollowUpSuggestions(userId);
+    const result = await syncInbox(ownerUserId, { daysBack: 90 });
+    await generateFollowUpSuggestions(ownerUserId);
 
     await prisma.user.update({
-      where: { id: userId },
+      where: { id: ownerUserId },
       data: {
         initialScanCompletedAt: new Date(),
       },
