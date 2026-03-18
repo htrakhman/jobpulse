@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncInbox } from "@/lib/gmail/sync";
@@ -18,16 +18,12 @@ export async function POST() {
     let ownerUserId = userId;
     const dbUser = await prisma.user.findUnique({ where: { id: userId } });
     if (!dbUser) {
-      const fallback = await prisma.connectedAccount.findFirst({
-        where: {
-          user: {
-            email: {
-              contains: "@",
-            },
-          },
-        },
-      });
-      if (fallback) ownerUserId = fallback.userId;
+      const clerk = await currentUser();
+      const clerkEmail = clerk?.emailAddresses[0]?.emailAddress ?? "";
+      if (clerkEmail) {
+        const fallback = await prisma.user.findUnique({ where: { email: clerkEmail } });
+        if (fallback) ownerUserId = fallback.id;
+      }
     }
 
     const result = await syncInbox(ownerUserId);
