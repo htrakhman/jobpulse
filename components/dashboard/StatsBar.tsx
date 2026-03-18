@@ -10,14 +10,17 @@ interface StatsBarProps {
 export function StatsBar({ stats }: StatsBarProps) {
   const items = [
     { label: "Total Applications", value: stats.total, color: "text-gray-900" },
-    { label: "Active", value: stats.active, color: "text-blue-600" },
+    { label: "Applied", value: stats.applied, color: "text-blue-600" },
+    { label: "Awaiting Response", value: stats.waiting, color: "text-slate-600" },
+    { label: "Assessment", value: stats.assessment, color: "text-orange-600" },
     { label: "Interviewing", value: stats.interviewing, color: "text-purple-600" },
     { label: "Offers", value: stats.offers, color: "text-green-600" },
+    { label: "Rejected", value: stats.rejected, color: "text-rose-600" },
     { label: "Follow-ups Due", value: stats.pendingFollowUps, color: "text-amber-600" },
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4 mb-6">
       {items.map((item) => (
         <Card key={item.label} className="shadow-none border border-gray-200">
           <CardContent className="p-4">
