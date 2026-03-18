@@ -80,6 +80,9 @@ export function SyncButton() {
           "Rescan inbox"
         )}
       </Button>
+      <span className="hidden xl:inline text-xs text-gray-400">
+        Need older results? Increase window, then rescan.
+      </span>
     </div>
   );
 }
