@@ -1,22 +1,23 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getAuthUrl } from "@/lib/gmail/client";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
     if (!userId) {
-      return redirect("/sign-in");
+      return NextResponse.redirect(new URL("/sign-in", request.url));
     }
 
     if (!prisma) {
-      return redirect("/dashboard?error=db_required");
+      return NextResponse.redirect(new URL("/dashboard?error=db_required", request.url));
     }
 
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-      return redirect("/dashboard?error=google_oauth_missing");
+      return NextResponse.redirect(
+        new URL("/dashboard?error=google_oauth_missing", request.url)
+      );
     }
 
     const user = await currentUser();
@@ -25,17 +26,20 @@ export async function GET(request: NextRequest) {
     const returnTo = searchParams.get("returnTo") ?? "/dashboard";
 
     // Track first time we request Gmail access
-    await prisma.user.upsert({
-      where: { id: userId },
-      create: {
-        id: userId,
-        email: user?.emailAddresses[0]?.emailAddress ?? "",
-        gmailAccessRequestedAt: new Date(),
-      },
-      update: {
-        gmailAccessRequestedAt: new Date(),
-      },
+    const userEmail = user?.emailAddresses[0]?.emailAddress ?? "";
+    const existingUser = await prisma.user.findFirst({
+      where: { OR: [{ id: userId }, { email: userEmail }] },
     });
+    if (existingUser) {
+      await prisma.user.update({
+        where: { id: existingUser.id },
+        data: { gmailAccessRequestedAt: new Date() },
+      });
+    } else {
+      await prisma.user.create({
+        data: { id: userId, email: userEmail, gmailAccessRequestedAt: new Date() },
+      });
+    }
 
     const state = Buffer.from(
       JSON.stringify({ auto, returnTo })
@@ -45,9 +49,9 @@ export async function GET(request: NextRequest) {
       state,
       loginHint: user?.emailAddresses[0]?.emailAddress,
     });
-    return redirect(url);
+    return NextResponse.redirect(url);
   } catch (err) {
     console.error("[gmail/connect] Error:", err);
-    return redirect("/dashboard?error=gmail_connect_failed");
+    return NextResponse.redirect(new URL("/dashboard?error=gmail_connect_failed", request.url));
   }
 }

@@ -10,7 +10,7 @@ function createPrismaClient(): PrismaClient | null {
   if (!url) return null;
   try {
     // Use explicit sslmode=verify-full to silence pg SSL warning (prefer/require/verify-ca will change in pg v9)
-    url = url.replace(/([?&])sslmode=(require|prefer|verify-ca)(&|$)/g, "$1sslmode=verify-full$3");
+    url = url.replace(/([?&])sslmode=(require|prefer|verify-ca)(&|$)/g, "$1sslmode=verify-full$3").replace(/([?&])channel_binding=require(&|$)/g, "$1channel_binding=prefer$2");
     const adapter = new PrismaPg({ connectionString: url });
     return new PrismaClient({
       adapter,
