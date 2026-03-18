@@ -1,6 +1,5 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createOAuth2Client } from "@/lib/gmail/client";
 import { setupGmailWatch } from "@/lib/gmail/pubsub";
 import { syncInbox } from "@/lib/gmail/sync";
@@ -9,7 +8,7 @@ import { requirePrisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   const { userId } = await auth();
-  if (!userId) return redirect("/sign-in");
+  if (!userId) return NextResponse.redirect(new URL("/sign-in", request.url));
 
   const prisma = requirePrisma();
 
@@ -40,7 +39,7 @@ export async function GET(request: NextRequest) {
     } else {
       redirectUrl.searchParams.set("error", "gmail_connect_failed");
     }
-    return redirect(redirectUrl.pathname + "?" + redirectUrl.searchParams.toString());
+    return NextResponse.redirect(redirectUrl);
   }
 
   try {
@@ -56,17 +55,24 @@ export async function GET(request: NextRequest) {
 
     // Ensure user record exists
     const user = await currentUser();
-    await prisma.user.upsert({
-      where: { id: userId },
-      create: {
-        id: userId,
-        email: user?.emailAddresses[0]?.emailAddress ?? gmailEmail,
-        gmailAccessRequestedAt: new Date(),
-      },
-      update: {
-        gmailAccessRequestedAt: new Date(),
-      },
+    const userEmail = user?.emailAddresses[0]?.emailAddress ?? gmailEmail;
+    const existingUser = await prisma.user.findFirst({
+      where: { OR: [{ id: userId }, { email: userEmail }] },
     });
+    if (existingUser) {
+      await prisma.user.update({
+        where: { id: existingUser.id },
+        data: { gmailAccessRequestedAt: new Date() },
+      });
+    } else {
+      await prisma.user.create({
+        data: {
+          id: userId,
+          email: userEmail,
+          gmailAccessRequestedAt: new Date(),
+        },
+      });
+    }
 
     // Store connected account
     await prisma.connectedAccount.upsert({
@@ -118,12 +124,12 @@ export async function GET(request: NextRequest) {
     redirectUrl.searchParams.set("scan", "completed");
     redirectUrl.searchParams.set("range", "90");
     redirectUrl.searchParams.set("applications", String(result.applications));
-    return redirect(redirectUrl.pathname + "?" + redirectUrl.searchParams.toString());
+    return NextResponse.redirect(redirectUrl);
   } catch (err) {
     console.error("[gmail/connect/callback] Error:", err);
     const msg = err instanceof Error ? err.message : String(err);
     const redirectUrl = new URL("/dashboard", process.env.NEXT_PUBLIC_APP_URL);
     redirectUrl.searchParams.set("error", msg.includes("redirect_uri_mismatch") ? "redirect_uri_mismatch" : "gmail_connect_failed");
-    return redirect(redirectUrl.pathname + "?" + redirectUrl.searchParams.toString());
+    return NextResponse.redirect(redirectUrl);
   }
 }

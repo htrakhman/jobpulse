@@ -15,7 +15,7 @@ const DEBOUNCE_MS = 3000; // Wait 3s after last change before committing
 
 function run(cmd, args, cwd = ROOT) {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd, stdio: "inherit", shell: true });
+    const p = spawn(cmd, args, { cwd, stdio: "inherit", shell: false });
     p.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`Exit ${code}`))));
   });
 }
