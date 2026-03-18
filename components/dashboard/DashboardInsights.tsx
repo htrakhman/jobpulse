@@ -6,6 +6,8 @@ import type { ApplicationStage } from "@/types";
 interface InsightApplication {
   id: string;
   stage: ApplicationStage;
+  company: string;
+  role: string | null;
   appliedAt: string | null;
   lastActivityAt: string;
 }
@@ -34,6 +36,19 @@ const STAGE_GROUPS: Array<{ key: ApplicationStage; label: string; color: string 
   { key: "Closed", label: "Closed", color: "bg-gray-500" },
 ];
 
+const INDUSTRY_COLORS = [
+  "#2563eb",
+  "#7c3aed",
+  "#f97316",
+  "#16a34a",
+  "#db2777",
+  "#14b8a6",
+  "#eab308",
+  "#6b7280",
+];
+
+const SIZE_COLORS = ["#2563eb", "#16a34a", "#f97316", "#6b7280"];
+
 function weekStart(d: Date) {
   const x = new Date(d);
   const day = x.getDay();
@@ -41,6 +56,87 @@ function weekStart(d: Date) {
   x.setDate(x.getDate() - diff);
   x.setHours(0, 0, 0, 0);
   return x;
+}
+
+function inferIndustry(company: string, role: string | null): string {
+  const text = `${company} ${role ?? ""}`.toLowerCase();
+  if (/(health|care|biotech|bio|med)/i.test(text)) return "Healthcare/Biotech";
+  if (/(bank|pay|fin|capital|crypto|insur)/i.test(text)) return "Fintech/Finance";
+  if (/(recruit|talent|hr|people|workday|ashby|lever|greenhouse)/i.test(text))
+    return "HR/Recruiting";
+  if (/(shop|store|commerce|retail|marketplace)/i.test(text)) return "E-commerce/Retail";
+  if (/(school|university|academy|edu)/i.test(text)) return "Education";
+  if (/(media|news|content|studio|entertain)/i.test(text)) return "Media";
+  if (/(ai|software|tech|cloud|data|platform|systems|labs)/i.test(text))
+    return "Software/AI";
+  return "Other";
+}
+
+function inferCompanySizeBucket(company: string): string {
+  const c = company.toLowerCase();
+  if (/(international|global|corporation|corp|holdings|group|systems|technologies)/i.test(c))
+    return "Enterprise (1000+)";
+  if (/(labs|studio|ventures|ai|io|startup)/i.test(c))
+    return "Startup (1-50)";
+  return "Mid-market (51-999)";
+}
+
+function buildDistribution(
+  values: string[],
+  palette: string[]
+): Array<{ label: string; value: number; pct: number; color: string }> {
+  const counts = new Map<string, number>();
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  const total = values.length || 1;
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  return sorted.map(([label, value], idx) => ({
+    label,
+    value,
+    pct: (value / total) * 100,
+    color: palette[idx % palette.length],
+  }));
+}
+
+function DonutChart({
+  title,
+  data,
+}: {
+  title: string;
+  data: Array<{ label: string; value: number; pct: number; color: string }>;
+}) {
+  const gradient = data.length
+    ? `conic-gradient(${data
+        .map((d, idx) => {
+          const prev = data.slice(0, idx).reduce((s, x) => s + x.pct, 0);
+          return `${d.color} ${prev}% ${(prev + d.pct).toFixed(2)}%`;
+        })
+        .join(", ")})`
+    : "conic-gradient(#e5e7eb 0% 100%)";
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+
+  return (
+    <div className="border border-gray-200 rounded-xl bg-white p-4">
+      <p className="text-sm font-semibold text-gray-800 mb-3">{title}</p>
+      <div className="flex items-center gap-4">
+        <div className="relative w-28 h-28 shrink-0 rounded-full" style={{ background: gradient }}>
+          <div className="absolute inset-4 rounded-full bg-white border border-gray-100 flex items-center justify-center">
+            <span className="text-xs font-semibold text-gray-700">{total}</span>
+          </div>
+        </div>
+        <div className="space-y-1.5 text-xs w-full">
+          {data.slice(0, 5).map((item) => (
+            <div key={item.label} className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1 text-gray-600">
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                {item.label}
+              </span>
+              <span className="text-gray-700">{item.value} ({item.pct.toFixed(0)}%)</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function DashboardInsights({
@@ -115,6 +211,14 @@ export function DashboardInsights({
     return cur !== prev;
   });
   const activeHover = hoverIndex !== null ? chartPoints[hoverIndex] : null;
+  const industryData = buildDistribution(
+    filteredApps.map((a) => inferIndustry(a.company, a.role)),
+    INDUSTRY_COLORS
+  );
+  const companySizeData = buildDistribution(
+    filteredApps.map((a) => inferCompanySizeBucket(a.company)),
+    SIZE_COLORS
+  );
 
   return (
     <div className="mb-6 grid gap-4 lg:grid-cols-3">
@@ -248,6 +352,11 @@ export function DashboardInsights({
             );
           })}
         </div>
+      </div>
+
+      <div className="lg:col-span-3 grid gap-4 md:grid-cols-2">
+        <DonutChart title="Applications by Industry" data={industryData} />
+        <DonutChart title="Applications by Company Size" data={companySizeData} />
       </div>
     </div>
   );
