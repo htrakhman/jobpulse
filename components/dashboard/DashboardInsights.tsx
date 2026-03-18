@@ -29,6 +29,7 @@ interface DashboardInsightsProps {
 const STAGE_GROUPS: Array<{ key: ApplicationStage; label: string; color: string }> = [
   { key: "Applied", label: "Applied", color: "bg-blue-500" },
   { key: "Waiting", label: "Awaiting Response", color: "bg-slate-500" },
+  { key: "Scheduling", label: "Scheduling", color: "bg-indigo-500" },
   { key: "Assessment", label: "Assessment", color: "bg-orange-500" },
   { key: "Interviewing", label: "Interviewing", color: "bg-purple-500" },
   { key: "Offer", label: "Offer Received", color: "bg-green-500" },

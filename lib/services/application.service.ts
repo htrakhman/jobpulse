@@ -6,6 +6,7 @@ import type { ClassificationResult, ParsedEmail, ApplicationStage } from "@/type
 const STAGE_PRIORITY: ApplicationStage[] = [
   "Applied",
   "Waiting",
+  "Scheduling",
   "Assessment",
   "Interviewing",
   "Offer",
@@ -311,6 +312,7 @@ export async function getDashboardStats(userId: string) {
     total: counts.reduce((sum: number, c: { _count: { id: number } }) => sum + c._count.id, 0),
     applied: stageMap["Applied"] ?? 0,
     waiting: stageMap["Waiting"] ?? 0,
+    scheduling: stageMap["Scheduling"] ?? 0,
     assessment: stageMap["Assessment"] ?? 0,
     interviewing: stageMap["Interviewing"] ?? 0,
     offers: stageMap["Offer"] ?? 0,

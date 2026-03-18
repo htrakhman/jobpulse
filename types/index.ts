@@ -1,6 +1,7 @@
 export type ApplicationStage =
   | "Applied"
   | "Waiting"
+  | "Scheduling"
   | "Interviewing"
   | "Assessment"
   | "Offer"
@@ -75,6 +76,7 @@ export interface DashboardStats {
   total: number;
   applied: number;
   waiting: number;
+  scheduling: number;
   assessment: number;
   interviewing: number;
   offers: number;

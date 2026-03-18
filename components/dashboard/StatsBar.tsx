@@ -12,6 +12,7 @@ export function StatsBar({ stats }: StatsBarProps) {
     { label: "Total Applications", value: stats.total, color: "text-gray-900" },
     { label: "Applied", value: stats.applied, color: "text-blue-600" },
     { label: "Awaiting Response", value: stats.waiting, color: "text-slate-600" },
+    { label: "Scheduling", value: stats.scheduling, color: "text-indigo-600" },
     { label: "Assessment", value: stats.assessment, color: "text-orange-600" },
     { label: "Interviewing", value: stats.interviewing, color: "text-purple-600" },
     { label: "Offers", value: stats.offers, color: "text-green-600" },
@@ -20,7 +21,7 @@ export function StatsBar({ stats }: StatsBarProps) {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4 mb-6">
+    <div className="grid grid-cols-2 md:grid-cols-5 xl:grid-cols-9 gap-4 mb-6">
       {items.map((item) => (
         <Card key={item.label} className="shadow-none border border-gray-200">
           <CardContent className="p-4">

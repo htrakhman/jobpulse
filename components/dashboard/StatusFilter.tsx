@@ -6,6 +6,7 @@ const STAGES = [
   { value: "", label: "All" },
   { value: "Applied", label: "Applied" },
   { value: "Waiting", label: "Awaiting Response" },
+  { value: "Scheduling", label: "Scheduling" },
   { value: "Interviewing", label: "Interviewing" },
   { value: "Assessment", label: "Assessment" },
   { value: "Offer", label: "Offer Received" },

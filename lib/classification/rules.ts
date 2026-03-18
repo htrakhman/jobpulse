@@ -134,7 +134,7 @@ const RULES: Rule[] = [
   {
     name: "interview_scheduled_link",
     emailType: "interview_scheduled",
-    stage: "Interviewing",
+    stage: "Scheduling",
     match: ({ body }) =>
       bodyContains(
         body,
@@ -159,15 +159,49 @@ const RULES: Rule[] = [
   {
     name: "interview_request_availability_subject",
     emailType: "interview_request",
-    stage: "Interviewing",
+    stage: "Scheduling",
     match: ({ subject, body }) =>
       subjectContains(subject, "availability request", "interview availability") &&
       bodyContains(body, "interview"),
   },
   {
+    name: "interview_request_availability_body",
+    emailType: "interview_request",
+    stage: "Scheduling",
+    match: ({ body }) =>
+      bodyContains(
+        body,
+        "please share your availability",
+        "share your availability",
+        "let us know your availability",
+        "send your availability",
+        "time windows that work",
+        "times that work for you",
+        "availability for next week",
+        "availability this week"
+      ),
+  },
+  {
+    name: "interview_scheduling_pending_confirmation",
+    emailType: "general_update",
+    stage: "Scheduling",
+    match: ({ subject, body }) =>
+      (subjectContains(subject, "scheduling", "schedule", "availability") ||
+        bodyContains(body, "availability", "schedule")) &&
+      bodyContains(
+        body,
+        "we will confirm",
+        "we'll confirm shortly",
+        "pending confirmation",
+        "calendar invite to follow",
+        "once confirmed",
+        "team will confirm"
+      ),
+  },
+  {
     name: "interview_request_subject",
     emailType: "interview_request",
-    stage: "Interviewing",
+    stage: "Scheduling",
     match: ({ subject }) =>
       subjectContains(
         subject,
@@ -180,7 +214,7 @@ const RULES: Rule[] = [
   {
     name: "interview_request_body_invite",
     emailType: "interview_request",
-    stage: "Interviewing",
+    stage: "Scheduling",
     match: ({ body }) =>
       bodyContains(
         body,
@@ -197,7 +231,7 @@ const RULES: Rule[] = [
   {
     name: "interview_request_hiring_manager",
     emailType: "interview_request",
-    stage: "Interviewing",
+    stage: "Scheduling",
     match: ({ body }) =>
       bodyContainsAll(body, "hiring manager", "interview") ||
       bodyContainsAll(body, "phone screen", "schedule"),

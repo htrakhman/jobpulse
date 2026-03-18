@@ -13,6 +13,10 @@ const STAGE_CONFIG: Record<
     label: "Awaiting Response",
     className: "bg-gray-50 text-gray-600 border-gray-200",
   },
+  Scheduling: {
+    label: "Scheduling",
+    className: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  },
   Interviewing: {
     label: "Interviewing",
     className: "bg-purple-50 text-purple-700 border-purple-200",

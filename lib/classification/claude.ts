@@ -17,6 +17,7 @@ const VALID_EMAIL_TYPES: EmailType[] = [
 const VALID_STAGES: ApplicationStage[] = [
   "Applied",
   "Waiting",
+  "Scheduling",
   "Interviewing",
   "Assessment",
   "Offer",
@@ -42,7 +43,7 @@ Body snippet: ${bodySnippet.slice(0, 800)}
 Return ONLY a valid JSON object with these exact fields:
 {
   "emailType": one of: application_confirmation, interview_request, interview_scheduled, assessment, rejection, offer, general_update, unknown,
-  "stage": one of: Applied, Waiting, Interviewing, Assessment, Offer, Rejected, Closed,
+  "stage": one of: Applied, Waiting, Scheduling, Interviewing, Assessment, Offer, Rejected, Closed,
   "company": company name as string or null,
   "role": job title/role as string or null,
   "recruiterName": recruiter's full name as string or null,

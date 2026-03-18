@@ -19,7 +19,7 @@ import { ConnectGmailBanner } from "@/components/dashboard/ConnectGmailBanner";
 import type { ApplicationStage } from "@/types";
 
 const VALID_STAGES: ApplicationStage[] = [
-  "Applied", "Waiting", "Interviewing", "Assessment", "Offer", "Rejected", "Closed",
+  "Applied", "Waiting", "Scheduling", "Interviewing", "Assessment", "Offer", "Rejected", "Closed",
 ];
 const VALID_WINDOWS = new Set([30, 90, 180, 365]);
 
@@ -54,6 +54,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     total: 0,
     applied: 0,
     waiting: 0,
+    scheduling: 0,
     assessment: 0,
     interviewing: 0,
     offers: 0,

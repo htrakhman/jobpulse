@@ -6,6 +6,7 @@ import type { ApplicationStage } from "@/types";
 const VALID_STAGES: ApplicationStage[] = [
   "Applied",
   "Waiting",
+  "Scheduling",
   "Interviewing",
   "Assessment",
   "Offer",

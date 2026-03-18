@@ -48,6 +48,7 @@ type SortKey =
 const STAGE_ORDER: ApplicationStage[] = [
   "Applied",
   "Waiting",
+  "Scheduling",
   "Assessment",
   "Interviewing",
   "Offer",
@@ -206,6 +207,7 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
                 <option value="">All statuses</option>
                 <option value="Applied">Applied</option>
                 <option value="Waiting">Awaiting Response</option>
+                <option value="Scheduling">Scheduling</option>
                 <option value="Assessment">Assessment</option>
                 <option value="Interviewing">Interviewing</option>
                 <option value="Offer">Offer Received</option>
