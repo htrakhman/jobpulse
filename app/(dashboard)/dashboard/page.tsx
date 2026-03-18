@@ -39,7 +39,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       ? (params.stage as ApplicationStage)
       : undefined;
 
-  const emptyStats = { total: 0, active: 0, interviewing: 0, offers: 0, rejected: 0, pendingFollowUps: 0 };
+  const emptyStats = {
+    total: 0,
+    applied: 0,
+    waiting: 0,
+    assessment: 0,
+    interviewing: 0,
+    offers: 0,
+    rejected: 0,
+    pendingFollowUps: 0,
+  };
   const emptyApps: Awaited<ReturnType<typeof getApplicationsForUser>> = [];
   const emptyFollowUps: Awaited<ReturnType<typeof getFollowUpSuggestions>> = [];
 
