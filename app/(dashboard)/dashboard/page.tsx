@@ -1,4 +1,5 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
@@ -9,6 +10,7 @@ import { ApplicationTable } from "@/components/dashboard/ApplicationTable";
 import { StatusFilter } from "@/components/dashboard/StatusFilter";
 import { FollowUpSection } from "@/components/dashboard/FollowUpCard";
 import { SyncButton } from "@/components/dashboard/SyncButton";
+import { DashboardInsights } from "@/components/dashboard/DashboardInsights";
 import { ConnectGmailBanner } from "@/components/dashboard/ConnectGmailBanner";
 import type { ApplicationStage } from "@/types";
 
@@ -249,8 +251,28 @@ npm run dev`}
       {/* Stats */}
       <StatsBar stats={stats} />
 
+      {/* Insights */}
+      <DashboardInsights applications={serializedApps} />
+
       {/* Follow-up suggestions */}
       <FollowUpSection suggestions={serializedFollowUps} />
+
+      {applications.length > 0 && (
+        <div className="mb-6 border border-blue-200 bg-blue-50 rounded-xl p-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-blue-900">People Enrichment (Clay-style)</p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Open any application and click <strong>Find Contacts</strong> to search and enrich people.
+            </p>
+          </div>
+          <Link
+            href={`/applications/${applications[0].id}`}
+            className="text-sm bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 whitespace-nowrap"
+          >
+            Open enrichment
+          </Link>
+        </div>
+      )}
 
       {/* Filter + Table */}
       <div className="flex items-center justify-between mb-4">
