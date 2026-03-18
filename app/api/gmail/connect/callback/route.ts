@@ -56,22 +56,35 @@ export async function GET(request: NextRequest) {
     // Ensure user record exists
     const user = await currentUser();
     const userEmail = user?.emailAddresses[0]?.emailAddress ?? gmailEmail;
-    const existingUser = await prisma.user.findFirst({
-      where: { OR: [{ id: userId }, { email: userEmail }] },
-    });
-    if (existingUser) {
+    const existingById = await prisma.user.findUnique({ where: { id: userId } });
+    if (existingById) {
       await prisma.user.update({
-        where: { id: existingUser.id },
-        data: { gmailAccessRequestedAt: new Date() },
-      });
-    } else {
-      await prisma.user.create({
+        where: { id: userId },
         data: {
-          id: userId,
-          email: userEmail,
+          email: userEmail || existingById.email,
           gmailAccessRequestedAt: new Date(),
         },
       });
+    } else {
+      const existingByEmail = userEmail
+        ? await prisma.user.findUnique({ where: { email: userEmail } })
+        : null;
+
+      if (existingByEmail) {
+        // Re-link historical row to current Clerk user id.
+        await prisma.user.update({
+          where: { id: existingByEmail.id },
+          data: { id: userId, gmailAccessRequestedAt: new Date() },
+        });
+      } else {
+        await prisma.user.create({
+          data: {
+            id: userId,
+            email: userEmail,
+            gmailAccessRequestedAt: new Date(),
+          },
+        });
+      }
     }
 
     // Store connected account
