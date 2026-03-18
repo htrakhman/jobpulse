@@ -117,10 +117,16 @@ npm run dev`}
   }
 
   let user, connectedAccount;
+  let ownerUserId = userId;
+  const clerkEmail = clerkUser?.emailAddresses[0]?.emailAddress ?? "";
   try {
     user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user && clerkEmail) {
+      user = await prisma.user.findUnique({ where: { email: clerkEmail } });
+      if (user) ownerUserId = user.id;
+    }
     connectedAccount = user
-      ? await prisma.connectedAccount.findUnique({ where: { userId } })
+      ? await prisma.connectedAccount.findUnique({ where: { userId: ownerUserId } })
       : null;
   } catch {
     // DB connection failed — still show personal dashboard with empty state
@@ -174,9 +180,9 @@ npm run dev`}
 
   const [applications, stats, followUps] = isConnected
     ? await Promise.all([
-        getApplicationsForUser(userId, stageFilter ? { stage: stageFilter } : undefined),
-        getDashboardStats(userId),
-        getFollowUpSuggestions(userId),
+        getApplicationsForUser(ownerUserId, stageFilter ? { stage: stageFilter } : undefined),
+        getDashboardStats(ownerUserId),
+        getFollowUpSuggestions(ownerUserId),
       ])
     : [
         [] as Awaited<ReturnType<typeof getApplicationsForUser>>,
