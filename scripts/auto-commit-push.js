@@ -11,17 +11,16 @@ const chokidar = require("chokidar");
 
 const ROOT = path.resolve(__dirname, "..");
 let debounceTimer = null;
-let firstChangeAt = null;
 let commitInProgress = false;
 const pendingChanges = new Set();
-const DEBOUNCE_MS = 20000; // Batch edits before committing
-const MAX_BATCH_WAIT_MS = 120000; // Do not delay a batch forever
+const DEBOUNCE_MS = 120000; // Only commit after 2 minutes of no changes
 const MIN_PUSH_INTERVAL_MS = 10 * 60 * 1000; // At most one auto-push every 10 minutes
 let lastPushAt = 0;
 
 const NOISE_PATH_PATTERNS = [
   /^next-env\.d\.ts$/,
   /^lib\/generated\/prisma\//,
+  /^scripts\/auto-commit-push\.js$/,
 ];
 
 function run(cmd, args, cwd = ROOT) {
@@ -122,7 +121,6 @@ async function commitAndPush() {
     await run("git", ["push", "origin", "HEAD"]);
     lastPushAt = Date.now();
     pendingChanges.clear();
-    firstChangeAt = null;
     console.log(`\n✓ Pushed to GitHub at ${new Date().toLocaleTimeString()}\n`);
   } catch (e) {
     if (e.message?.includes("Exit")) {
@@ -139,18 +137,15 @@ function scheduleCommit(relativePath) {
   if (isNoiseFile(relativePath)) return;
   pendingChanges.add(relativePath);
   console.log(`  changed: ${relativePath}`);
-  if (!firstChangeAt) firstChangeAt = Date.now();
 
   if (debounceTimer) clearTimeout(debounceTimer);
-  const elapsed = Date.now() - firstChangeAt;
-  const waitMs = Math.max(0, Math.min(DEBOUNCE_MS, MAX_BATCH_WAIT_MS - elapsed));
 
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
     if (pendingChanges.size > 0) {
       commitAndPush();
     }
-  }, waitMs);
+  }, DEBOUNCE_MS);
 }
 
 const watcher = chokidar.watch(ROOT, {

@@ -81,15 +81,25 @@ export function DashboardInsights({ applications, windowDays }: DashboardInsight
     (best, b) => (b.count > best.count ? b : best),
     { key: "", label: "-", count: 0 }
   );
-  const yTicks = [maxY, Math.round(maxY / 2), 0];
-
-  const points = buckets
-    .map((b, i) => {
-      const x = (i / Math.max(1, buckets.length - 1)) * 100;
-      const y = 100 - (b.count / maxY) * 100;
-      return `${x},${y}`;
-    })
-    .join(" ");
+  const yTicks = [maxY, Math.round(maxY * 0.66), Math.round(maxY * 0.33), 0];
+  const chartPoints = buckets.map((b, i) => {
+    const x = (i / Math.max(1, buckets.length - 1)) * 100;
+    const y = 100 - (b.count / maxY) * 100;
+    return { ...b, x, y };
+  });
+  const linePath = chartPoints.map((p) => `${p.x},${p.y}`).join(" ");
+  const areaPath = `0,100 ${linePath} 100,100`;
+  const latestPoint = chartPoints[chartPoints.length - 1];
+  const peakPoint = chartPoints.reduce(
+    (best, p) => (p.count > best.count ? p : best),
+    chartPoints[0] ?? { x: 0, y: 100, count: 0, key: "", label: "" }
+  );
+  const monthLabels = chartPoints.filter((p, idx, arr) => {
+    if (idx === 0 || idx === arr.length - 1) return true;
+    const prev = new Date(arr[idx - 1].key).getMonth();
+    const cur = new Date(p.key).getMonth();
+    return cur !== prev;
+  });
 
   return (
     <div className="mb-6 grid gap-4 lg:grid-cols-3">
@@ -98,70 +108,48 @@ export function DashboardInsights({ applications, windowDays }: DashboardInsight
           <p className="text-sm font-semibold text-gray-800">
             Application Trend (last {Math.round(weeks / 4.35)} month{Math.round(weeks / 4.35) === 1 ? "" : "s"})
           </p>
-          <div className="text-[11px] text-gray-500 flex items-center gap-3">
-            <span>Total: <strong className="text-gray-700">{total}</strong></span>
-            <span>Avg/wk: <strong className="text-gray-700">{averagePerWeek.toFixed(1)}</strong></span>
-            <span>Peak: <strong className="text-gray-700">{peak.count}</strong></span>
+          <div className="text-[11px] text-gray-500 flex items-center gap-2">
+            <span className="rounded bg-gray-50 px-2 py-1">Total <strong className="text-gray-700">{total}</strong></span>
+            <span className="rounded bg-gray-50 px-2 py-1">Avg/wk <strong className="text-gray-700">{averagePerWeek.toFixed(1)}</strong></span>
+            <span className="rounded bg-gray-50 px-2 py-1">Peak <strong className="text-gray-700">{peak.count}</strong></span>
           </div>
         </div>
-        <div className="w-full h-48 relative pl-6">
-          <div className="absolute left-0 top-0 h-full w-6 text-[10px] text-gray-400 flex flex-col justify-between">
+        <div className="w-full h-52 relative pl-8 pr-2">
+          <div className="absolute left-0 top-0 h-full w-7 text-[10px] text-gray-400 flex flex-col justify-between">
             {yTicks.map((tick, i) => (
               <span key={i}>{tick}</span>
             ))}
           </div>
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
-            <polyline
-              fill="none"
-              stroke="#f3f4f6"
-              strokeWidth="0.5"
-              points="0,0 100,0"
-            />
-            <polyline
-              fill="none"
-              stroke="#f3f4f6"
-              strokeWidth="0.5"
-              points="0,50 100,50"
-            />
-            <polyline
-              fill="none"
-              stroke="#d1d5db"
-              strokeWidth="0.4"
-              points="0,100 100,100"
-            />
-            <polyline
-              fill="none"
-              stroke="#2563eb"
-              strokeWidth="2"
-              points={points}
-              vectorEffect="non-scaling-stroke"
-            />
-            {buckets.map((b, i) => {
-              const x = (i / Math.max(1, buckets.length - 1)) * 100;
-              const y = 100 - (b.count / maxY) * 100;
-              const showLabel = b.count > 0 && (i % 2 === 0 || i === buckets.length - 1);
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full rounded-lg bg-gradient-to-b from-blue-50/40 to-white">
+            <defs>
+              <linearGradient id="trendArea" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
+              </linearGradient>
+            </defs>
+            {yTicks.map((_, idx) => {
+              const y = (idx / Math.max(1, yTicks.length - 1)) * 100;
               return (
-                <g key={b.key}>
-                  <circle cx={x} cy={y} r="1.5" fill="#2563eb" />
-                  {showLabel && (
-                    <text
-                      x={x}
-                      y={Math.max(4, y - 3)}
-                      textAnchor="middle"
-                      fontSize="3"
-                      fill="#1f2937"
-                    >
-                      {b.count}
-                    </text>
-                  )}
-                </g>
+                <line key={idx} x1="0" y1={y} x2="100" y2={y} stroke="#eef2ff" strokeWidth="0.6" />
               );
             })}
+            <polygon points={areaPath} fill="url(#trendArea)" />
+            <polyline fill="none" stroke="#2563eb" strokeWidth="2.2" points={linePath} vectorEffect="non-scaling-stroke" />
+
+            <circle cx={peakPoint.x} cy={peakPoint.y} r="2" fill="#1d4ed8" />
+            <text x={peakPoint.x} y={Math.max(6, peakPoint.y - 4)} textAnchor="middle" fontSize="3.2" fill="#1f2937">
+              {peakPoint.count}
+            </text>
+
+            <circle cx={latestPoint.x} cy={latestPoint.y} r="2.1" fill="#2563eb" />
+            <text x={latestPoint.x} y={Math.max(6, latestPoint.y - 4)} textAnchor="end" fontSize="3.2" fill="#1f2937">
+              {latestPoint.count}
+            </text>
           </svg>
         </div>
         <div className="flex justify-between text-[10px] text-gray-400 mt-2">
-          {buckets.map((b, i) => (
-            i % 4 === 0 || i === buckets.length - 1 ? <span key={b.key}>{b.label}</span> : <span key={b.key} />
+          {monthLabels.map((p) => (
+            <span key={p.key}>{p.label}</span>
           ))}
         </div>
       </div>
