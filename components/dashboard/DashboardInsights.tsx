@@ -59,6 +59,17 @@ function weekStart(d: Date) {
   return x;
 }
 
+function niceAxisMax(value: number): number {
+  if (value <= 1) return 2;
+  const exponent = Math.floor(Math.log10(value));
+  const base = 10 ** exponent;
+  const fraction = value / base;
+  if (fraction <= 1) return 1 * base;
+  if (fraction <= 2) return 2 * base;
+  if (fraction <= 5) return 5 * base;
+  return 10 * base;
+}
+
 function inferIndustry(company: string, role: string | null): string {
   const text = `${company} ${role ?? ""}`.toLowerCase();
   if (/(health|care|biotech|bio|med)/i.test(text)) return "Healthcare/Biotech";
@@ -180,7 +191,8 @@ export function DashboardInsights({
     const idx = bucketMap.get(dayKey);
     if (idx !== undefined) buckets[idx].count += 1;
   }
-  const maxY = Math.max(1, ...buckets.map((b) => b.count));
+  const rawMax = Math.max(1, ...buckets.map((b) => b.count));
+  const maxY = niceAxisMax(Math.ceil(rawMax * 1.15));
   const averagePerDay = buckets.length
     ? buckets.reduce((sum, b) => sum + b.count, 0) / buckets.length
     : 0;
@@ -188,7 +200,9 @@ export function DashboardInsights({
     (best, b) => (b.count > best.count ? b : best),
     { key: "", label: "-", count: 0 }
   );
-  const yTicks = [maxY, Math.round(maxY * 0.66), Math.round(maxY * 0.33), 0];
+  const yTicks = Array.from({ length: 5 }, (_, i) =>
+    Math.round(((4 - i) / 4) * maxY)
+  );
   const chartPoints = useMemo(
     () =>
       buckets.map((b, i) => {
@@ -200,11 +214,6 @@ export function DashboardInsights({
   );
   const linePath = chartPoints.map((p) => `${p.x},${p.y}`).join(" ");
   const areaPath = `0,100 ${linePath} 100,100`;
-  const latestPoint = chartPoints[chartPoints.length - 1];
-  const peakPoint = chartPoints.reduce(
-    (best, p) => (p.count > best.count ? p : best),
-    chartPoints[0] ?? { x: 0, y: 100, count: 0, key: "", label: "" }
-  );
   const monthLabels = chartPoints.filter((p, idx, arr) => {
     if (idx === 0 || idx === arr.length - 1) return true;
     const prev = new Date(arr[idx - 1].key).getMonth();
@@ -266,8 +275,6 @@ export function DashboardInsights({
             <polygon points={areaPath} fill="url(#trendArea)" />
             <polyline fill="none" stroke="#2563eb" strokeWidth="2.2" points={linePath} vectorEffect="non-scaling-stroke" />
 
-            <circle cx={peakPoint.x} cy={peakPoint.y} r="2" fill="#1d4ed8" />
-            <circle cx={latestPoint.x} cy={latestPoint.y} r="2.1" fill="#2563eb" />
             {activeHover && (
               <>
                 <line
@@ -279,7 +286,6 @@ export function DashboardInsights({
                   strokeDasharray="1.5 1.5"
                   strokeWidth="0.8"
                 />
-                <circle cx={activeHover.x} cy={activeHover.y} r="2.4" fill="#1d4ed8" />
               </>
             )}
           </svg>

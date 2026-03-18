@@ -373,6 +373,160 @@ function detectInterviewRound(text: string): 0 | 1 | 2 | 3 {
   return 0;
 }
 
+function detectInviteSignals(text: string): boolean {
+  return /(invitation:|calendar invite|google calendar|accepted:|declined:|proposed new time|join with google meet|zoom\.us|microsoft teams|teams\.microsoft)/i.test(
+    text
+  );
+}
+
+function hasInterviewLanguage(text: string): boolean {
+  return /(interview|phone screen|screening call|hiring manager|panel interview|onsite|on-site)/i.test(
+    text
+  );
+}
+
+function extractLikelyInviteDate(text: string, referenceAt: Date): Date | null {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const dateFocused = lines
+    .filter((line) => /(when:|date:|time:|invitation:|calendar)/i.test(line))
+    .join("\n");
+  const corpus = `${dateFocused}\n${text}`;
+  const candidates: string[] = [];
+
+  const isoMatches = corpus.match(
+    /\b\d{4}-\d{2}-\d{2}(?:[ t]\d{1,2}:\d{2}(?::\d{2})?(?:\s?(?:am|pm))?)?(?:z|[+-]\d{2}:?\d{2})?\b/gi
+  );
+  if (isoMatches) candidates.push(...isoMatches);
+
+  const monthMatches = corpus.match(
+    /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*\d{4})?(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?/gi
+  );
+  if (monthMatches) candidates.push(...monthMatches);
+
+  const dayNameMatches = corpus.match(
+    /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday),?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*\d{4})?(?:\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?/gi
+  );
+  if (dayNameMatches) candidates.push(...dayNameMatches);
+
+  let best: Date | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  const referenceMs = referenceAt.getTime();
+  const maxDistanceMs = 400 * 24 * 60 * 60 * 1000;
+
+  for (const rawCandidate of candidates) {
+    const normalized = rawCandidate.replace(/\b(\d{1,2})(st|nd|rd|th)\b/gi, "$1");
+    const parsedMs = Date.parse(normalized);
+    if (!Number.isFinite(parsedMs)) continue;
+    const distance = Math.abs(parsedMs - referenceMs);
+    if (distance > maxDistanceMs) continue;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = new Date(parsedMs);
+    }
+  }
+
+  return best;
+}
+
+function detectInviteDerivedStage(
+  subject: string | null,
+  snippet: string | null,
+  bodyText: string | null,
+  receivedAt: Date
+): ApplicationStage | null {
+  const text = `${subject ?? ""}\n${snippet ?? ""}\n${(bodyText ?? "").slice(0, 2500)}`;
+  if (!hasInterviewLanguage(text)) return null;
+  const inviteDate = extractLikelyInviteDate(text, receivedAt);
+  const hasInvite = detectInviteSignals(text);
+  if (!hasInvite && !inviteDate) return null;
+  if (!inviteDate) return "Scheduling";
+  return inviteDate.getTime() <= Date.now() ? "Interviewing" : "Scheduling";
+}
+
+export async function reconcileInterviewInvites(userId: string, daysBack: number): Promise<number> {
+  const prisma = requirePrisma();
+  const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+  const applications = await prisma.application.findMany({
+    where: {
+      userId,
+      stage: { in: ["Applied", "Waiting", "Scheduling"] },
+      OR: [{ appliedAt: { gte: cutoff } }, { lastActivityAt: { gte: cutoff } }],
+    },
+    select: {
+      id: true,
+      stage: true,
+      emails: {
+        select: {
+          id: true,
+          subject: true,
+          snippet: true,
+          bodyText: true,
+          receivedAt: true,
+        },
+        orderBy: { receivedAt: "desc" },
+      },
+      events: {
+        where: { emailType: "interview_scheduled" },
+        select: { emailId: true, stage: true },
+      },
+    },
+  });
+
+  let updated = 0;
+  for (const app of applications) {
+    let inferredStage: ApplicationStage | null = null;
+    let sourceEmailId: string | null = null;
+    for (const email of app.emails) {
+      const detected = detectInviteDerivedStage(
+        email.subject,
+        email.snippet,
+        email.bodyText,
+        email.receivedAt
+      );
+      if (!detected) continue;
+      if (
+        !inferredStage ||
+        STAGE_PRIORITY.indexOf(detected) > STAGE_PRIORITY.indexOf(inferredStage)
+      ) {
+        inferredStage = detected;
+        sourceEmailId = email.id;
+      }
+    }
+    if (!inferredStage) continue;
+    if (!shouldUpdateStage(app.stage as ApplicationStage, inferredStage)) continue;
+
+    await prisma.application.update({
+      where: { id: app.id },
+      data: { stage: inferredStage },
+    });
+
+    const hasMatchingEvent = app.events.some(
+      (event) => event.emailId === sourceEmailId && event.stage === inferredStage
+    );
+    if (!hasMatchingEvent) {
+      await prisma.applicationEvent.create({
+        data: {
+          applicationId: app.id,
+          emailId: sourceEmailId,
+          stage: inferredStage,
+          emailType: "interview_scheduled",
+          summary:
+            inferredStage === "Interviewing"
+              ? "Interview likely completed (invite date passed)"
+              : "Interview invite detected",
+          occurredAt: new Date(),
+        },
+      });
+    }
+    updated++;
+  }
+
+  return updated;
+}
+
 export interface InterviewRoundMetrics {
   total: number;
   firstRoundCount: number;

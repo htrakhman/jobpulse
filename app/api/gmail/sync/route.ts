@@ -2,6 +2,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncInbox } from "@/lib/gmail/sync";
+import { reconcileInterviewInvites } from "@/lib/services/application.service";
 import { generateFollowUpSuggestions } from "@/lib/services/followup.service";
 
 const ALLOWED_WINDOWS = new Set([30, 90, 180, 365]);
@@ -33,9 +34,10 @@ export async function POST(request: Request) {
     }
 
     const result = await syncInbox(ownerUserId, { daysBack });
+    const inviteReconciled = await reconcileInterviewInvites(ownerUserId, daysBack);
     await generateFollowUpSuggestions(ownerUserId);
 
-    return NextResponse.json({ success: true, daysBack, ...result });
+    return NextResponse.json({ success: true, daysBack, inviteReconciled, ...result });
   } catch (err) {
     console.error("[api/gmail/sync] Error:", err);
     return NextResponse.json({ error: "Sync failed" }, { status: 500 });

@@ -8,6 +8,7 @@ export async function classifyEmail(email: ParsedEmail): Promise<ClassificationR
     subject: email.subject,
     body: email.bodyText,
     fromEmail: email.fromEmail ?? "",
+    receivedAt: email.receivedAt,
   };
 
   // Quick pre-filter: is this even job-related?

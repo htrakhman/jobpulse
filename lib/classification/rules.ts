@@ -4,6 +4,7 @@ interface RuleContext {
   subject: string;
   body: string;
   fromEmail: string;
+  receivedAt: Date;
 }
 
 interface Rule {
@@ -30,6 +31,73 @@ function bodyContains(body: string, ...terms: string[]): boolean {
 function bodyContainsAll(body: string, ...terms: string[]): boolean {
   const b = lower(body);
   return terms.every((t) => b.includes(lower(t)));
+}
+
+function detectInterviewInviteStage(ctx: RuleContext): ApplicationStage | null {
+  const combined = `${ctx.subject}\n${ctx.body}`;
+  const combinedLower = lower(combined);
+  const hasInterviewContext =
+    /(interview|phone screen|screening call|hiring manager|panel interview|onsite|on-site)/i.test(
+      combined
+    );
+  if (!hasInterviewContext) return null;
+
+  const hasInviteSignals =
+    /(invitation:|calendar invite|google calendar|accepted:|declined:|proposed new time|join with google meet|zoom\.us|microsoft teams|teams\.microsoft)/i.test(
+      combined
+    ) ||
+    subjectContains(ctx.subject, "interview scheduled", "invitation", "calendar");
+
+  const eventDate = extractLikelyEventDate(combined, ctx.receivedAt);
+  if (!hasInviteSignals && !eventDate) return null;
+  if (!eventDate) return "Scheduling";
+  return eventDate.getTime() <= Date.now() ? "Interviewing" : "Scheduling";
+}
+
+function extractLikelyEventDate(text: string, receivedAt: Date): Date | null {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const dateFocused = lines
+    .filter((line) => /(when:|date:|time:|invitation:|calendar)/i.test(line))
+    .join("\n");
+  const corpus = `${dateFocused}\n${text}`;
+  const candidates: string[] = [];
+
+  const isoMatches = corpus.match(
+    /\b\d{4}-\d{2}-\d{2}(?:[ t]\d{1,2}:\d{2}(?::\d{2})?(?:\s?(?:am|pm))?)?(?:z|[+-]\d{2}:?\d{2})?\b/gi
+  );
+  if (isoMatches) candidates.push(...isoMatches);
+
+  const monthMatches = corpus.match(
+    /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*\d{4})?(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?/gi
+  );
+  if (monthMatches) candidates.push(...monthMatches);
+
+  const dayNameMatches = corpus.match(
+    /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday),?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*\d{4})?(?:\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?/gi
+  );
+  if (dayNameMatches) candidates.push(...dayNameMatches);
+
+  let best: Date | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  const referenceMs = receivedAt.getTime();
+  const maxDistanceMs = 400 * 24 * 60 * 60 * 1000;
+
+  for (const rawCandidate of candidates) {
+    const normalized = rawCandidate.replace(/\b(\d{1,2})(st|nd|rd|th)\b/gi, "$1");
+    const parsedMs = Date.parse(normalized);
+    if (!Number.isFinite(parsedMs)) continue;
+    const distance = Math.abs(parsedMs - referenceMs);
+    if (distance > maxDistanceMs) continue;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = new Date(parsedMs);
+    }
+  }
+
+  return best;
 }
 
 const RULES: Rule[] = [
@@ -285,6 +353,15 @@ const RULES: Rule[] = [
 ];
 
 export function classifyByRules(ctx: RuleContext): Omit<ClassificationResult, "company" | "role" | "recruiterName" | "recruiterEmail" | "atsProvider"> | null {
+  const inviteStage = detectInterviewInviteStage(ctx);
+  if (inviteStage) {
+    return {
+      emailType: "interview_scheduled",
+      stage: inviteStage,
+      confidence: "deterministic",
+    };
+  }
+
   for (const rule of RULES) {
     if (rule.match(ctx)) {
       return {
@@ -322,6 +399,8 @@ export function isJobRelated(ctx: RuleContext): boolean {
     "employment",
     "talent",
     "opportunity",
+    "scheduling",
+    "availability",
   ];
 
   const atsKeywords = [
@@ -340,6 +419,17 @@ export function isJobRelated(ctx: RuleContext): boolean {
     "apply.workable.com",
     "jobs.lever.co",
   ];
+
+  if (
+    /(invitation:|calendar invite|google calendar|accepted:|declined:|proposed new time)/i.test(
+      combined
+    ) &&
+    /(interview|phone screen|screening call|hiring manager|panel interview|onsite|on-site)/i.test(
+      combined
+    )
+  ) {
+    return true;
+  }
 
   if (atsKeywords.some((k) => combined.includes(k))) return true;
   const matchCount = jobKeywords.filter((k) => combined.includes(k)).length;

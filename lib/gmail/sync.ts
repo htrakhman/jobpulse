@@ -5,7 +5,7 @@ import { upsertApplication } from "@/lib/services/application.service";
 import { requirePrisma } from "@/lib/prisma";
 
 function buildJobSearchQuery(daysBack: number): string {
-  return `subject:(application OR interview OR offer OR rejection OR hiring OR "thank you for applying" OR "availability request" OR assessment OR "next steps") newer_than:${daysBack}d`;
+  return `subject:(application OR interview OR invitation OR calendar OR offer OR rejection OR hiring OR "thank you for applying" OR "availability request" OR assessment OR "next steps") newer_than:${daysBack}d`;
 }
 
 const BATCH_SIZE = 20;
