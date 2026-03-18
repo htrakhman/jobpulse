@@ -20,18 +20,68 @@ function run(cmd, args, cwd = ROOT) {
   });
 }
 
+function runAndCapture(cmd, args, cwd = ROOT) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args, { cwd, shell: false });
+    let out = "";
+    let err = "";
+    p.stdout.on("data", (d) => (out += d.toString()));
+    p.stderr.on("data", (d) => (err += d.toString()));
+    p.on("close", (code) => {
+      if (code === 0) resolve(out.trim());
+      else reject(new Error((err || out || `Exit ${code}`).trim()));
+    });
+  });
+}
+
+function parseChangedFiles(status) {
+  return [
+    ...new Set(
+      status
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const raw = line.slice(3).trim();
+          if (raw.includes(" -> ")) return raw.split(" -> ").pop().trim();
+          return raw;
+        })
+    ),
+  ];
+}
+
+function inferArea(file) {
+  if (file.startsWith("app/api/")) return "API routes";
+  if (file.startsWith("app/(dashboard)/")) return "dashboard";
+  if (file.startsWith("app/")) return "app";
+  if (file.startsWith("components/dashboard/")) return "dashboard UI";
+  if (file.startsWith("components/")) return "components";
+  if (file.startsWith("lib/services/")) return "services";
+  if (file.startsWith("lib/")) return "backend logic";
+  if (file.startsWith("prisma/")) return "database schema";
+  if (file.startsWith("scripts/")) return "automation scripts";
+  return "project files";
+}
+
+function buildCommitMessage(files) {
+  const areas = [...new Set(files.map(inferArea))];
+  const areaLabel =
+    areas.length === 1 ? areas[0] : areas.length <= 3 ? areas.join(", ") : "multiple areas";
+  const title = `auto: update ${areaLabel} (${files.length} file${files.length === 1 ? "" : "s"})`;
+  const listedFiles = files.slice(0, 8).map((f) => `- ${f}`).join("\n");
+  const remaining = files.length > 8 ? `\n- ...and ${files.length - 8} more` : "";
+  const body = `Auto-commit after local file changes.\n\nFiles changed:\n${listedFiles}${remaining}`;
+  return { title, body };
+}
+
 async function commitAndPush() {
   try {
     await run("git", ["add", "-A"]);
-    const status = await new Promise((resolve, reject) => {
-      const p = spawn("git", ["status", "--porcelain"], { cwd: ROOT });
-      let out = "";
-      p.stdout.on("data", (d) => (out += d));
-      p.on("close", (code) => (code === 0 ? resolve(out) : reject(new Error(`Exit ${code}`))));
-    });
+    const status = await runAndCapture("git", ["status", "--porcelain"]);
     if (!status.trim()) return;
-    const msg = `auto: ${new Date().toISOString().slice(0, 19).replace("T", " ")}`;
-    await run("git", ["commit", "-m", msg]);
+    const files = parseChangedFiles(status);
+    const { title, body } = buildCommitMessage(files);
+    await run("git", ["commit", "-m", title, "-m", body]);
     await run("git", ["push", "origin", "HEAD"]);
     console.log(`\n✓ Pushed to GitHub at ${new Date().toLocaleTimeString()}\n`);
   } catch (e) {
