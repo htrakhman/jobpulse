@@ -57,7 +57,7 @@ export function DashboardInsights({ applications, windowDays }: DashboardInsight
     ? (offerCount / progressedToInterview) * 100
     : 0;
 
-  const weeks = Math.max(4, Math.min(26, Math.ceil(windowDays / 7)));
+  const weeks = Math.max(12, Math.min(52, Math.ceil(windowDays / 7)));
   const thisWeek = weekStart(now);
   const buckets: Array<{ key: string; label: string; count: number }> = [];
   for (let i = weeks - 1; i >= 0; i--) {
@@ -74,6 +74,15 @@ export function DashboardInsights({ applications, windowDays }: DashboardInsight
     if (idx !== undefined) buckets[idx].count += 1;
   }
   const maxY = Math.max(1, ...buckets.map((b) => b.count));
+  const averagePerWeek = buckets.length
+    ? buckets.reduce((sum, b) => sum + b.count, 0) / buckets.length
+    : 0;
+  const peak = buckets.reduce(
+    (best, b) => (b.count > best.count ? b : best),
+    { key: "", label: "-", count: 0 }
+  );
+  const yTicks = [maxY, Math.round(maxY / 2), 0];
+
   const points = buckets
     .map((b, i) => {
       const x = (i / Math.max(1, buckets.length - 1)) * 100;
@@ -85,9 +94,35 @@ export function DashboardInsights({ applications, windowDays }: DashboardInsight
   return (
     <div className="mb-6 grid gap-4 lg:grid-cols-3">
       <div className="lg:col-span-2 border border-gray-200 rounded-xl bg-white p-4">
-        <p className="text-sm font-semibold text-gray-800 mb-3">Application Trend (last 12 weeks)</p>
-        <div className="w-full h-44">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-gray-800">
+            Application Trend (last {Math.round(weeks / 4.35)} month{Math.round(weeks / 4.35) === 1 ? "" : "s"})
+          </p>
+          <div className="text-[11px] text-gray-500 flex items-center gap-3">
+            <span>Total: <strong className="text-gray-700">{total}</strong></span>
+            <span>Avg/wk: <strong className="text-gray-700">{averagePerWeek.toFixed(1)}</strong></span>
+            <span>Peak: <strong className="text-gray-700">{peak.count}</strong></span>
+          </div>
+        </div>
+        <div className="w-full h-48 relative pl-6">
+          <div className="absolute left-0 top-0 h-full w-6 text-[10px] text-gray-400 flex flex-col justify-between">
+            {yTicks.map((tick, i) => (
+              <span key={i}>{tick}</span>
+            ))}
+          </div>
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
+            <polyline
+              fill="none"
+              stroke="#f3f4f6"
+              strokeWidth="0.5"
+              points="0,0 100,0"
+            />
+            <polyline
+              fill="none"
+              stroke="#f3f4f6"
+              strokeWidth="0.5"
+              points="0,50 100,50"
+            />
             <polyline
               fill="none"
               stroke="#d1d5db"
@@ -101,11 +136,33 @@ export function DashboardInsights({ applications, windowDays }: DashboardInsight
               points={points}
               vectorEffect="non-scaling-stroke"
             />
+            {buckets.map((b, i) => {
+              const x = (i / Math.max(1, buckets.length - 1)) * 100;
+              const y = 100 - (b.count / maxY) * 100;
+              const showLabel = b.count > 0 && (i % 2 === 0 || i === buckets.length - 1);
+              return (
+                <g key={b.key}>
+                  <circle cx={x} cy={y} r="1.5" fill="#2563eb" />
+                  {showLabel && (
+                    <text
+                      x={x}
+                      y={Math.max(4, y - 3)}
+                      textAnchor="middle"
+                      fontSize="3"
+                      fill="#1f2937"
+                    >
+                      {b.count}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
           </svg>
         </div>
-        <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-          <span>{buckets[0]?.label}</span>
-          <span>{buckets[buckets.length - 1]?.label}</span>
+        <div className="flex justify-between text-[10px] text-gray-400 mt-2">
+          {buckets.map((b, i) => (
+            i % 4 === 0 || i === buckets.length - 1 ? <span key={b.key}>{b.label}</span> : <span key={b.key} />
+          ))}
         </div>
       </div>
 

@@ -16,6 +16,8 @@ let commitInProgress = false;
 const pendingChanges = new Set();
 const DEBOUNCE_MS = 20000; // Batch edits before committing
 const MAX_BATCH_WAIT_MS = 120000; // Do not delay a batch forever
+const MIN_PUSH_INTERVAL_MS = 10 * 60 * 1000; // At most one auto-push every 10 minutes
+let lastPushAt = 0;
 
 const NOISE_PATH_PATTERNS = [
   /^next-env\.d\.ts$/,
@@ -89,6 +91,19 @@ function buildCommitMessage(files) {
 
 async function commitAndPush() {
   if (commitInProgress) return;
+  const now = Date.now();
+  const cooldownMs = MIN_PUSH_INTERVAL_MS - (now - lastPushAt);
+  if (cooldownMs > 0) {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      if (pendingChanges.size > 0) commitAndPush();
+    }, cooldownMs);
+    console.log(
+      `[auto-commit-push] batching changes; next push in ${Math.ceil(cooldownMs / 1000)}s`
+    );
+    return;
+  }
   commitInProgress = true;
   try {
     await run("git", ["add", "-A"]);
@@ -105,6 +120,7 @@ async function commitAndPush() {
     const { title, body } = buildCommitMessage(files);
     await run("git", ["commit", "-m", title, "-m", body]);
     await run("git", ["push", "origin", "HEAD"]);
+    lastPushAt = Date.now();
     pendingChanges.clear();
     firstChangeAt = null;
     console.log(`\n✓ Pushed to GitHub at ${new Date().toLocaleTimeString()}\n`);
@@ -155,3 +171,4 @@ watcher.on("change", (p) => scheduleCommit(path.relative(ROOT, p)));
 watcher.on("add", (p) => scheduleCommit(path.relative(ROOT, p)));
 
 console.log("👀 Watching for changes. Auto-commit + push to GitHub (batched)\n");
+console.log("   push cooldown:", `${MIN_PUSH_INTERVAL_MS / 60000} minutes`);

@@ -44,7 +44,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       : undefined;
   const selectedWindow = VALID_WINDOWS.has(Number(params.window))
     ? Number(params.window)
-    : 180;
+    : 30;
 
   const emptyStats = {
     total: 0,
