@@ -3,7 +3,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
-import { getApplicationsForUser, getDashboardStats } from "@/lib/services/application.service";
+import {
+  getApplicationsForUser,
+  getDashboardStats,
+  getInterviewRoundMetrics,
+} from "@/lib/services/application.service";
 import { getFollowUpSuggestions } from "@/lib/services/followup.service";
 import { StatsBar } from "@/components/dashboard/StatsBar";
 import { ApplicationTable } from "@/components/dashboard/ApplicationTable";
@@ -194,16 +198,26 @@ npm run dev`}
 
   const isConnected = !!connectedAccount;
 
-  const [applications, stats, followUps] = isConnected
+  const [applications, stats, followUps, roundMetrics] = isConnected
     ? await Promise.all([
         getApplicationsForUser(ownerUserId, stageFilter ? { stage: stageFilter } : undefined),
         getDashboardStats(ownerUserId),
         getFollowUpSuggestions(ownerUserId),
+        getInterviewRoundMetrics(ownerUserId, selectedWindow),
       ])
     : [
         [] as Awaited<ReturnType<typeof getApplicationsForUser>>,
         emptyStats,
         [] as Awaited<ReturnType<typeof getFollowUpSuggestions>>,
+        {
+          total: 0,
+          firstRoundCount: 0,
+          secondRoundCount: 0,
+          thirdRoundCount: 0,
+          firstRoundRate: 0,
+          secondRoundRate: 0,
+          thirdRoundRate: 0,
+        },
       ];
 
   // Serialize dates for client components
@@ -266,7 +280,11 @@ npm run dev`}
       <StatsBar stats={stats} />
 
       {/* Insights */}
-      <DashboardInsights applications={serializedApps} windowDays={selectedWindow} />
+      <DashboardInsights
+        applications={serializedApps}
+        windowDays={selectedWindow}
+        roundMetrics={roundMetrics}
+      />
 
       {/* Follow-up suggestions */}
       <FollowUpSection suggestions={serializedFollowUps} />

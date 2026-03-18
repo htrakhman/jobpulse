@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import type { ApplicationStage } from "@/types";
 
 interface InsightApplication {
@@ -12,6 +13,15 @@ interface InsightApplication {
 interface DashboardInsightsProps {
   applications: InsightApplication[];
   windowDays: number;
+  roundMetrics: {
+    total: number;
+    firstRoundCount: number;
+    secondRoundCount: number;
+    thirdRoundCount: number;
+    firstRoundRate: number;
+    secondRoundRate: number;
+    thirdRoundRate: number;
+  };
 }
 
 const STAGE_GROUPS: Array<{ key: ApplicationStage; label: string; color: string }> = [
@@ -33,7 +43,12 @@ function weekStart(d: Date) {
   return x;
 }
 
-export function DashboardInsights({ applications, windowDays }: DashboardInsightsProps) {
+export function DashboardInsights({
+  applications,
+  windowDays,
+  roundMetrics,
+}: DashboardInsightsProps) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const now = new Date();
   const windowMs = windowDays * 24 * 60 * 60 * 1000;
   const filteredApps = applications.filter((app) => {
@@ -46,35 +61,30 @@ export function DashboardInsights({ applications, windowDays }: DashboardInsight
   for (const stage of STAGE_GROUPS.map((s) => s.key)) byStage.set(stage, 0);
   for (const app of filteredApps) byStage.set(app.stage, (byStage.get(app.stage) ?? 0) + 1);
 
-  const progressedToInterview =
-    (byStage.get("Interviewing") ?? 0) + (byStage.get("Offer") ?? 0);
-  const offerCount = byStage.get("Offer") ?? 0;
-  const responseRate = total
-    ? ((total - (byStage.get("Waiting") ?? 0)) / total) * 100
-    : 0;
-  const interviewRate = total ? (progressedToInterview / total) * 100 : 0;
-  const offerRateFromInterview = progressedToInterview
-    ? (offerCount / progressedToInterview) * 100
-    : 0;
-
-  const weeks = Math.max(12, Math.min(52, Math.ceil(windowDays / 7)));
-  const thisWeek = weekStart(now);
+  const days = Math.max(30, Math.min(365, windowDays));
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
   const buckets: Array<{ key: string; label: string; count: number }> = [];
-  for (let i = weeks - 1; i >= 0; i--) {
-    const d = new Date(thisWeek);
-    d.setDate(d.getDate() - i * 7);
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
     const key = d.toISOString().slice(0, 10);
-    buckets.push({ key, label: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }), count: 0 });
+    buckets.push({
+      key,
+      label: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      count: 0,
+    });
   }
   const bucketMap = new Map(buckets.map((b, idx) => [b.key, idx]));
   for (const app of filteredApps) {
     const source = app.appliedAt ? new Date(app.appliedAt) : new Date(app.lastActivityAt);
-    const wk = weekStart(source).toISOString().slice(0, 10);
-    const idx = bucketMap.get(wk);
+    source.setHours(0, 0, 0, 0);
+    const dayKey = source.toISOString().slice(0, 10);
+    const idx = bucketMap.get(dayKey);
     if (idx !== undefined) buckets[idx].count += 1;
   }
   const maxY = Math.max(1, ...buckets.map((b) => b.count));
-  const averagePerWeek = buckets.length
+  const averagePerDay = buckets.length
     ? buckets.reduce((sum, b) => sum + b.count, 0) / buckets.length
     : 0;
   const peak = buckets.reduce(
@@ -82,11 +92,15 @@ export function DashboardInsights({ applications, windowDays }: DashboardInsight
     { key: "", label: "-", count: 0 }
   );
   const yTicks = [maxY, Math.round(maxY * 0.66), Math.round(maxY * 0.33), 0];
-  const chartPoints = buckets.map((b, i) => {
-    const x = (i / Math.max(1, buckets.length - 1)) * 100;
-    const y = 100 - (b.count / maxY) * 100;
-    return { ...b, x, y };
-  });
+  const chartPoints = useMemo(
+    () =>
+      buckets.map((b, i) => {
+        const x = (i / Math.max(1, buckets.length - 1)) * 100;
+        const y = 100 - (b.count / maxY) * 100;
+        return { ...b, x, y };
+      }),
+    [buckets, maxY]
+  );
   const linePath = chartPoints.map((p) => `${p.x},${p.y}`).join(" ");
   const areaPath = `0,100 ${linePath} 100,100`;
   const latestPoint = chartPoints[chartPoints.length - 1];
@@ -100,21 +114,32 @@ export function DashboardInsights({ applications, windowDays }: DashboardInsight
     const cur = new Date(p.key).getMonth();
     return cur !== prev;
   });
+  const activeHover = hoverIndex !== null ? chartPoints[hoverIndex] : null;
 
   return (
     <div className="mb-6 grid gap-4 lg:grid-cols-3">
       <div className="lg:col-span-2 border border-gray-200 rounded-xl bg-white p-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-semibold text-gray-800">
-            Application Trend (last {Math.round(weeks / 4.35)} month{Math.round(weeks / 4.35) === 1 ? "" : "s"})
+            Application Trend (daily, last {days} days)
           </p>
           <div className="text-[11px] text-gray-500 flex items-center gap-2">
             <span className="rounded bg-gray-50 px-2 py-1">Total <strong className="text-gray-700">{total}</strong></span>
-            <span className="rounded bg-gray-50 px-2 py-1">Avg/wk <strong className="text-gray-700">{averagePerWeek.toFixed(1)}</strong></span>
-            <span className="rounded bg-gray-50 px-2 py-1">Peak <strong className="text-gray-700">{peak.count}</strong></span>
+            <span className="rounded bg-gray-50 px-2 py-1">Avg/day <strong className="text-gray-700">{averagePerDay.toFixed(2)}</strong></span>
+            <span className="rounded bg-gray-50 px-2 py-1">Peak day <strong className="text-gray-700">{peak.count}</strong></span>
           </div>
         </div>
-        <div className="w-full h-52 relative pl-8 pr-2">
+        <div
+          className="w-full h-52 relative pl-8 pr-2"
+          onMouseMove={(e) => {
+            const target = e.currentTarget.getBoundingClientRect();
+            const x = Math.max(0, Math.min(target.width, e.clientX - target.left));
+            const ratio = target.width > 0 ? x / target.width : 0;
+            const idx = Math.round(ratio * (chartPoints.length - 1));
+            setHoverIndex(Math.max(0, Math.min(chartPoints.length - 1, idx)));
+          }}
+          onMouseLeave={() => setHoverIndex(null)}
+        >
           <div className="absolute left-0 top-0 h-full w-7 text-[10px] text-gray-400 flex flex-col justify-between">
             {yTicks.map((tick, i) => (
               <span key={i}>{tick}</span>
@@ -137,15 +162,34 @@ export function DashboardInsights({ applications, windowDays }: DashboardInsight
             <polyline fill="none" stroke="#2563eb" strokeWidth="2.2" points={linePath} vectorEffect="non-scaling-stroke" />
 
             <circle cx={peakPoint.x} cy={peakPoint.y} r="2" fill="#1d4ed8" />
-            <text x={peakPoint.x} y={Math.max(6, peakPoint.y - 4)} textAnchor="middle" fontSize="3.2" fill="#1f2937">
-              {peakPoint.count}
-            </text>
-
             <circle cx={latestPoint.x} cy={latestPoint.y} r="2.1" fill="#2563eb" />
-            <text x={latestPoint.x} y={Math.max(6, latestPoint.y - 4)} textAnchor="end" fontSize="3.2" fill="#1f2937">
-              {latestPoint.count}
-            </text>
+            {activeHover && (
+              <>
+                <line
+                  x1={activeHover.x}
+                  y1="0"
+                  x2={activeHover.x}
+                  y2="100"
+                  stroke="#93c5fd"
+                  strokeDasharray="1.5 1.5"
+                  strokeWidth="0.8"
+                />
+                <circle cx={activeHover.x} cy={activeHover.y} r="2.4" fill="#1d4ed8" />
+              </>
+            )}
           </svg>
+          {activeHover && (
+            <div
+              className="absolute z-10 -translate-x-1/2 rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-[11px] shadow-sm pointer-events-none"
+              style={{
+                left: `calc(${activeHover.x}% + 32px)`,
+                top: `${Math.max(8, (activeHover.y / 100) * 208 - 8)}px`,
+              }}
+            >
+              <div className="font-medium text-gray-700">{activeHover.label}</div>
+              <div className="text-gray-500">{activeHover.count} application{activeHover.count === 1 ? "" : "s"}</div>
+            </div>
+          )}
         </div>
         <div className="flex justify-between text-[10px] text-gray-400 mt-2">
           {monthLabels.map((p) => (
@@ -155,13 +199,34 @@ export function DashboardInsights({ applications, windowDays }: DashboardInsight
       </div>
 
       <div className="border border-gray-200 rounded-xl bg-white p-4">
-        <p className="text-sm font-semibold text-gray-800 mb-3">Conversion Metrics</p>
+        <p className="text-sm font-semibold text-gray-800 mb-3">Interview Progression</p>
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between"><span className="text-gray-500">Response rate</span><span className="font-semibold">{responseRate.toFixed(1)}%</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Interview rate</span><span className="font-semibold">{interviewRate.toFixed(1)}%</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Offer from interview</span><span className="font-semibold">{offerRateFromInterview.toFixed(1)}%</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Total tracked</span><span className="font-semibold">{total}</span></div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Reached 1st round</span>
+            <span className="font-semibold">
+              {roundMetrics.firstRoundRate.toFixed(1)}% ({roundMetrics.firstRoundCount})
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Reached 2nd round</span>
+            <span className="font-semibold">
+              {roundMetrics.secondRoundRate.toFixed(1)}% ({roundMetrics.secondRoundCount})
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Reached 3rd/final round</span>
+            <span className="font-semibold">
+              {roundMetrics.thirdRoundRate.toFixed(1)}% ({roundMetrics.thirdRoundCount})
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Window tracked</span>
+            <span className="font-semibold">{roundMetrics.total}</span>
+          </div>
         </div>
+        <p className="text-[11px] text-gray-400 mt-3">
+          Derived from interview email chains sent from company domains.
+        </p>
       </div>
 
       <div className="lg:col-span-3 border border-gray-200 rounded-xl bg-white p-4">

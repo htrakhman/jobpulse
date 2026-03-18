@@ -318,3 +318,136 @@ export async function getDashboardStats(userId: string) {
     pendingFollowUps,
   };
 }
+
+const ATS_OR_GENERIC_DOMAINS = [
+  "gmail.com",
+  "yahoo.com",
+  "hotmail.com",
+  "outlook.com",
+  "icloud.com",
+  "ashbyhq.com",
+  "lever.co",
+  "greenhouse.io",
+  "workday.com",
+  "myworkdayjobs.com",
+  "smartrecruiters.com",
+  "jobvite.com",
+];
+
+function normalizeCompanyToken(company: string): string {
+  return company.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function extractDomain(email: string | null): string | null {
+  if (!email || !email.includes("@")) return null;
+  return email.split("@")[1]?.toLowerCase() ?? null;
+}
+
+function isLikelyCompanySender(emailDomain: string, company: string): boolean {
+  if (!emailDomain) return false;
+  if (ATS_OR_GENERIC_DOMAINS.some((d) => emailDomain.includes(d))) return false;
+
+  const root = emailDomain.split(".")[0] ?? "";
+  const companyToken = normalizeCompanyToken(company);
+  if (!root || !companyToken) return false;
+  return root.includes(companyToken) || companyToken.includes(root);
+}
+
+function detectInterviewRound(text: string): 0 | 1 | 2 | 3 {
+  const t = text.toLowerCase();
+  if (
+    /(third\s+round|3rd\s+round|round\s*3|final\s+round|final interview)/i.test(t)
+  ) {
+    return 3;
+  }
+  if (/(second\s+round|2nd\s+round|round\s*2)/i.test(t)) {
+    return 2;
+  }
+  if (
+    /(first\s+round|1st\s+round|round\s*1|phone\s+screen|screening\s+call|recruiter\s+screen)/i.test(t)
+  ) {
+    return 1;
+  }
+  return 0;
+}
+
+export interface InterviewRoundMetrics {
+  total: number;
+  firstRoundCount: number;
+  secondRoundCount: number;
+  thirdRoundCount: number;
+  firstRoundRate: number;
+  secondRoundRate: number;
+  thirdRoundRate: number;
+}
+
+export async function getInterviewRoundMetrics(
+  userId: string,
+  windowDays: number
+): Promise<InterviewRoundMetrics> {
+  const prisma = requirePrisma();
+  const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+
+  const applications = await prisma.application.findMany({
+    where: {
+      userId,
+      OR: [{ appliedAt: { gte: cutoff } }, { lastActivityAt: { gte: cutoff } }],
+    },
+    select: {
+      id: true,
+      company: true,
+      emails: {
+        select: {
+          fromEmail: true,
+          subject: true,
+          snippet: true,
+          bodyText: true,
+          emailType: true,
+        },
+      },
+    },
+  });
+
+  let firstRoundCount = 0;
+  let secondRoundCount = 0;
+  let thirdRoundCount = 0;
+
+  for (const app of applications) {
+    let maxRound: 0 | 1 | 2 | 3 = 0;
+
+    for (const email of app.emails) {
+      const domain = extractDomain(email.fromEmail);
+      if (!domain || !isLikelyCompanySender(domain, app.company)) continue;
+
+      const text = `${email.subject ?? ""}\n${email.snippet ?? ""}\n${
+        (email.bodyText ?? "").slice(0, 1200)
+      }`;
+      const detected = detectInterviewRound(text);
+      if (detected > maxRound) {
+        maxRound = detected;
+      } else if (
+        maxRound === 0 &&
+        (email.emailType === "interview_request" || email.emailType === "interview_scheduled")
+      ) {
+        maxRound = 1;
+      }
+    }
+
+    if (maxRound >= 1) firstRoundCount++;
+    if (maxRound >= 2) secondRoundCount++;
+    if (maxRound >= 3) thirdRoundCount++;
+  }
+
+  const total = applications.length;
+  const pct = (n: number) => (total ? (n / total) * 100 : 0);
+
+  return {
+    total,
+    firstRoundCount,
+    secondRoundCount,
+    thirdRoundCount,
+    firstRoundRate: pct(firstRoundCount),
+    secondRoundRate: pct(secondRoundCount),
+    thirdRoundRate: pct(thirdRoundCount),
+  };
+}
