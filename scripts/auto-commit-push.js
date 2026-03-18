@@ -11,7 +11,16 @@ const chokidar = require("chokidar");
 
 const ROOT = path.resolve(__dirname, "..");
 let debounceTimer = null;
-const DEBOUNCE_MS = 3000; // Wait 3s after last change before committing
+let firstChangeAt = null;
+let commitInProgress = false;
+const pendingChanges = new Set();
+const DEBOUNCE_MS = 20000; // Batch edits before committing
+const MAX_BATCH_WAIT_MS = 120000; // Do not delay a batch forever
+
+const NOISE_PATH_PATTERNS = [
+  /^next-env\.d\.ts$/,
+  /^lib\/generated\/prisma\//,
+];
 
 function run(cmd, args, cwd = ROOT) {
   return new Promise((resolve, reject) => {
@@ -32,6 +41,10 @@ function runAndCapture(cmd, args, cwd = ROOT) {
       else reject(new Error((err || out || `Exit ${code}`).trim()));
     });
   });
+}
+
+function isNoiseFile(file) {
+  return NOISE_PATH_PATTERNS.some((pattern) => pattern.test(file));
 }
 
 function parseChangedFiles(status) {
@@ -75,14 +88,25 @@ function buildCommitMessage(files) {
 }
 
 async function commitAndPush() {
+  if (commitInProgress) return;
+  commitInProgress = true;
   try {
     await run("git", ["add", "-A"]);
     const status = await runAndCapture("git", ["status", "--porcelain"]);
-    if (!status.trim()) return;
-    const files = parseChangedFiles(status);
+    if (!status.trim()) {
+      pendingChanges.clear();
+      return;
+    }
+    const files = parseChangedFiles(status).filter((f) => !isNoiseFile(f));
+    if (files.length === 0) {
+      pendingChanges.clear();
+      return;
+    }
     const { title, body } = buildCommitMessage(files);
     await run("git", ["commit", "-m", title, "-m", body]);
     await run("git", ["push", "origin", "HEAD"]);
+    pendingChanges.clear();
+    firstChangeAt = null;
     console.log(`\n✓ Pushed to GitHub at ${new Date().toLocaleTimeString()}\n`);
   } catch (e) {
     if (e.message?.includes("Exit")) {
@@ -90,16 +114,27 @@ async function commitAndPush() {
     } else {
       console.error("[auto-commit-push]", e);
     }
+  } finally {
+    commitInProgress = false;
   }
 }
 
 function scheduleCommit(relativePath) {
+  if (isNoiseFile(relativePath)) return;
+  pendingChanges.add(relativePath);
   console.log(`  changed: ${relativePath}`);
+  if (!firstChangeAt) firstChangeAt = Date.now();
+
   if (debounceTimer) clearTimeout(debounceTimer);
+  const elapsed = Date.now() - firstChangeAt;
+  const waitMs = Math.max(0, Math.min(DEBOUNCE_MS, MAX_BATCH_WAIT_MS - elapsed));
+
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
-    commitAndPush();
-  }, DEBOUNCE_MS);
+    if (pendingChanges.size > 0) {
+      commitAndPush();
+    }
+  }, waitMs);
 }
 
 const watcher = chokidar.watch(ROOT, {
