@@ -222,11 +222,17 @@ export function DashboardInsights({
   });
   const activeHover = hoverIndex !== null ? chartPoints[hoverIndex] : null;
   const industryData = buildDistribution(
-    filteredApps.map((a) => inferIndustry(a.company, a.role)),
+    (filteredApps.filter((a) => !!a.appliedAt).length > 0
+      ? filteredApps.filter((a) => !!a.appliedAt)
+      : filteredApps
+    ).map((a) => inferIndustry(a.company, a.role)),
     INDUSTRY_COLORS
   );
   const companySizeData = buildDistribution(
-    filteredApps.map((a) => inferCompanySizeBucket(a.company)),
+    (filteredApps.filter((a) => !!a.appliedAt).length > 0
+      ? filteredApps.filter((a) => !!a.appliedAt)
+      : filteredApps
+    ).map((a) => inferCompanySizeBucket(a.company)),
     SIZE_COLORS
   );
 
@@ -358,7 +364,10 @@ export function DashboardInsights({
                   <span>{value} ({pct.toFixed(0)}%)</span>
                 </div>
                 <div className="h-2 rounded bg-gray-100 overflow-hidden">
-                  <div className={`h-full ${stage.color}`} style={{ width: `${pct > 0 ? pct : 0}%` }} />
+                  <div
+                    className={`h-full ${stage.color}`}
+                    style={{ width: `${pct === 0 ? 0 : Math.max(2, pct)}%` }}
+                  />
                 </div>
               </div>
             );

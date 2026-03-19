@@ -199,14 +199,16 @@ npm run dev`}
 
   const isConnected = !!connectedAccount;
 
-  const [applications, stats, followUps, roundMetrics] = isConnected
+  const [applications, insightApplications, stats, followUps, roundMetrics] = isConnected
     ? await Promise.all([
         getApplicationsForUser(ownerUserId, stageFilter ? { stage: stageFilter } : undefined),
+        getApplicationsForUser(ownerUserId),
         getDashboardStats(ownerUserId),
         getFollowUpSuggestions(ownerUserId),
         getInterviewRoundMetrics(ownerUserId, selectedWindow),
       ])
     : [
+        [] as Awaited<ReturnType<typeof getApplicationsForUser>>,
         [] as Awaited<ReturnType<typeof getApplicationsForUser>>,
         emptyStats,
         [] as Awaited<ReturnType<typeof getFollowUpSuggestions>>,
@@ -223,6 +225,15 @@ npm run dev`}
 
   // Serialize dates for client components
   const serializedApps = applications.map((app) => ({
+    ...app,
+    appliedAt: app.appliedAt?.toISOString() ?? null,
+    lastActivityAt: app.lastActivityAt.toISOString(),
+    events: app.events.map((e) => ({
+      ...e,
+      occurredAt: e.occurredAt.toISOString(),
+    })),
+  }));
+  const serializedInsightApps = insightApplications.map((app) => ({
     ...app,
     appliedAt: app.appliedAt?.toISOString() ?? null,
     lastActivityAt: app.lastActivityAt.toISOString(),
@@ -282,7 +293,7 @@ npm run dev`}
 
       {/* Insights */}
       <DashboardInsights
-        applications={serializedApps}
+        applications={serializedInsightApps}
         windowDays={selectedWindow}
         roundMetrics={roundMetrics}
       />
