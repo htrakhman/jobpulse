@@ -628,7 +628,8 @@ export async function getInterviewRoundsByApplicationIds(
 
 export async function getInterviewRoundMetrics(
   userId: string,
-  windowDays: number
+  windowDays: number,
+  stage?: ApplicationStage
 ): Promise<InterviewRoundMetrics> {
   const prisma = requirePrisma();
   const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
@@ -636,6 +637,7 @@ export async function getInterviewRoundMetrics(
   const applications = await prisma.application.findMany({
     where: {
       userId,
+      ...(stage ? { stage } : {}),
       OR: [{ appliedAt: { gte: cutoff } }, { lastActivityAt: { gte: cutoff } }],
     },
     select: {

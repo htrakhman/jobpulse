@@ -1,24 +1,40 @@
 "use client";
 
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
+import type { ApplicationStage } from "@/types";
 import type { DashboardStats } from "@/types";
 
 interface StatsBarProps {
   stats: DashboardStats;
+  selectedStage?: ApplicationStage;
 }
 
-export function StatsBar({ stats }: StatsBarProps) {
+export function StatsBar({ stats, selectedStage }: StatsBarProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  function applyStage(stage: ApplicationStage | null) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (stage) params.set("stage", stage);
+    else params.delete("stage");
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
   const items = [
     {
       label: "Total Applications",
       value: stats.total,
       color: "text-gray-900",
+      stage: null as ApplicationStage | null,
       info: "All tracked job applications from classified inbox threads.",
     },
     {
       label: "Applied",
       value: stats.applied,
       color: "text-blue-600",
+      stage: "Applied" as ApplicationStage,
       info:
         'Detected from application-confirmation patterns such as "thank you for applying", "application received", and similar confirmation subjects/body text.',
     },
@@ -26,6 +42,7 @@ export function StatsBar({ stats }: StatsBarProps) {
       label: "Awaiting Response",
       value: stats.waiting,
       color: "text-slate-600",
+      stage: "Waiting" as ApplicationStage,
       info:
         'General status/update emails without interview/offer/rejection signals, e.g. "update on your application" and "application status".',
     },
@@ -33,6 +50,7 @@ export function StatsBar({ stats }: StatsBarProps) {
       label: "Scheduling",
       value: stats.scheduling,
       color: "text-indigo-600",
+      stage: "Scheduling" as ApplicationStage,
       info:
         "Interview booking phase. Looks for availability requests, scheduling language, and invite/calendar signals where the interview date is upcoming or not yet confirmed.",
     },
@@ -40,6 +58,7 @@ export function StatsBar({ stats }: StatsBarProps) {
       label: "Assessment",
       value: stats.assessment,
       color: "text-orange-600",
+      stage: "Assessment" as ApplicationStage,
       info:
         'Assessment/test stage from inbox patterns like "coding challenge", "take-home assignment", "technical assessment", and related subject/body terms.',
     },
@@ -47,6 +66,7 @@ export function StatsBar({ stats }: StatsBarProps) {
       label: "Interviewing",
       value: stats.interviewing,
       color: "text-purple-600",
+      stage: "Interviewing" as ApplicationStage,
       info:
         "Active interview stage. Includes confirmed interview emails and meeting invite signals where the detected interview date has already passed.",
     },
@@ -54,6 +74,7 @@ export function StatsBar({ stats }: StatsBarProps) {
       label: "Offers",
       value: stats.offers,
       color: "text-green-600",
+      stage: "Offer" as ApplicationStage,
       info:
         'Offer-stage emails identified by terms such as "offer letter", "job offer", and "pleased to offer you".',
     },
@@ -61,6 +82,7 @@ export function StatsBar({ stats }: StatsBarProps) {
       label: "Rejected",
       value: stats.rejected,
       color: "text-rose-600",
+      stage: "Rejected" as ApplicationStage,
       info:
         'Rejection emails with signals like "not moving forward", "other candidates", and decision-style rejection wording.',
     },
@@ -68,6 +90,7 @@ export function StatsBar({ stats }: StatsBarProps) {
       label: "Follow-ups Due",
       value: stats.pendingFollowUps,
       color: "text-amber-600",
+      stage: null as ApplicationStage | null,
       info:
         "Open follow-up reminders generated from inactivity windows (typically Applied/Waiting with no new activity past follow-up thresholds).",
     },
@@ -76,9 +99,22 @@ export function StatsBar({ stats }: StatsBarProps) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 xl:grid-cols-9 gap-4 mb-6">
       {items.map((item) => (
-        <Card key={item.label} className="relative overflow-visible shadow-none border border-gray-200">
+        <Card
+          key={item.label}
+          className={`relative overflow-visible shadow-none border border-gray-200 transition-colors ${
+            (item.stage && selectedStage === item.stage) || (!item.stage && !selectedStage)
+              ? "ring-2 ring-gray-900 border-gray-900"
+              : ""
+          }`}
+        >
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+            <button
+              type="button"
+              onClick={() => applyStage(item.stage)}
+              className="w-full text-left"
+              title={item.stage ? `Filter dashboard by ${item.label}` : "Show all stages"}
+            >
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
               <span className="inline-flex items-center gap-1.5">
                 {item.label}
                 <span className="relative group cursor-help select-none">
@@ -93,8 +129,9 @@ export function StatsBar({ stats }: StatsBarProps) {
                   </span>
                 </span>
               </span>
-            </p>
-            <p className={`text-2xl font-bold ${item.color}`}>{item.value}</p>
+              </p>
+              <p className={`text-2xl font-bold ${item.color}`}>{item.value}</p>
+            </button>
           </CardContent>
         </Card>
       ))}

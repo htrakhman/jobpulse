@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ApplicationStage } from "@/types";
 
 interface InsightApplication {
@@ -15,6 +15,7 @@ interface InsightApplication {
 interface DashboardInsightsProps {
   applications: InsightApplication[];
   windowDays: number;
+  selectedStage?: ApplicationStage;
   roundMetrics: {
     total: number;
     firstRoundCount: number;
@@ -49,15 +50,6 @@ const INDUSTRY_COLORS = [
 ];
 
 const SIZE_COLORS = ["#2563eb", "#16a34a", "#f97316", "#6b7280"];
-
-function weekStart(d: Date) {
-  const x = new Date(d);
-  const day = x.getDay();
-  const diff = (day + 6) % 7;
-  x.setDate(x.getDate() - diff);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
 
 function niceAxisMax(value: number): number {
   if (value <= 1) return 2;
@@ -154,6 +146,7 @@ function DonutChart({
 export function DashboardInsights({
   applications,
   windowDays,
+  selectedStage,
   roundMetrics,
 }: DashboardInsightsProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -161,7 +154,9 @@ export function DashboardInsights({
   const windowMs = windowDays * 24 * 60 * 60 * 1000;
   const filteredApps = applications.filter((app) => {
     const source = app.appliedAt ? new Date(app.appliedAt) : new Date(app.lastActivityAt);
-    return now.getTime() - source.getTime() <= windowMs;
+    if (now.getTime() - source.getTime() > windowMs) return false;
+    if (selectedStage && app.stage !== selectedStage) return false;
+    return true;
   });
 
   const total = filteredApps.length;
@@ -203,15 +198,11 @@ export function DashboardInsights({
   const yTicks = Array.from({ length: 5 }, (_, i) =>
     Math.round(((4 - i) / 4) * maxY)
   );
-  const chartPoints = useMemo(
-    () =>
-      buckets.map((b, i) => {
-        const x = (i / Math.max(1, buckets.length - 1)) * 100;
-        const y = 100 - (b.count / maxY) * 100;
-        return { ...b, x, y };
-      }),
-    [buckets, maxY]
-  );
+  const chartPoints = buckets.map((b, i) => {
+    const x = (i / Math.max(1, buckets.length - 1)) * 100;
+    const y = 100 - (b.count / maxY) * 100;
+    return { ...b, x, y };
+  });
   const linePath = chartPoints.map((p) => `${p.x},${p.y}`).join(" ");
   const areaPath = `0,100 ${linePath} 100,100`;
   const monthLabels = chartPoints.filter((p, idx, arr) => {
@@ -247,6 +238,11 @@ export function DashboardInsights({
             <span className="rounded bg-gray-50 px-2 py-1">Total <strong className="text-gray-700">{total}</strong></span>
             <span className="rounded bg-gray-50 px-2 py-1">Avg/day <strong className="text-gray-700">{averagePerDay.toFixed(2)}</strong></span>
             <span className="rounded bg-gray-50 px-2 py-1">Peak day <strong className="text-gray-700">{peak.count}</strong></span>
+            {selectedStage && (
+              <span className="rounded bg-gray-900 text-white px-2 py-1">
+                Stage: <strong>{selectedStage}</strong>
+              </span>
+            )}
           </div>
         </div>
         <div

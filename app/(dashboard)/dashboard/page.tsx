@@ -207,7 +207,7 @@ npm run dev`}
         getApplicationsForUser(ownerUserId),
         getDashboardStats(ownerUserId),
         getFollowUpSuggestions(ownerUserId),
-        getInterviewRoundMetrics(ownerUserId, selectedWindow),
+        getInterviewRoundMetrics(ownerUserId, selectedWindow, stageFilter),
       ])
     : [
         [] as Awaited<ReturnType<typeof getApplicationsForUser>>,
@@ -317,12 +317,13 @@ npm run dev`}
       {!isConnected && <ConnectGmailBanner />}
 
       {/* Stats */}
-      <StatsBar stats={stats} />
+      <StatsBar stats={stats} selectedStage={stageFilter} />
 
       {/* Insights */}
       <DashboardInsights
         applications={serializedInsightApps}
         windowDays={selectedWindow}
+        selectedStage={stageFilter}
         roundMetrics={roundMetrics}
       />
 
