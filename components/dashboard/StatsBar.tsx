@@ -76,7 +76,7 @@ export function StatsBar({ stats }: StatsBarProps) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 xl:grid-cols-9 gap-4 mb-6">
       {items.map((item) => (
-        <Card key={item.label} className="shadow-none border border-gray-200">
+        <Card key={item.label} className="relative overflow-visible shadow-none border border-gray-200">
           <CardContent className="p-4">
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
               <span className="inline-flex items-center gap-1.5">
@@ -88,7 +88,7 @@ export function StatsBar({ stats }: StatsBarProps) {
                   >
                     i
                   </span>
-                  <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-64 -translate-x-1/2 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-[11px] normal-case leading-relaxed text-gray-600 shadow-lg group-hover:block">
+                  <span className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden w-72 max-w-[22rem] -translate-x-1/2 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-[11px] normal-case leading-relaxed text-gray-600 shadow-lg whitespace-normal group-hover:block">
                     {item.info}
                   </span>
                 </span>
