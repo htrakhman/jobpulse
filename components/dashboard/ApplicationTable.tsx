@@ -56,6 +56,17 @@ const STAGE_ORDER: ApplicationStage[] = [
   "Closed",
 ];
 
+const STAGE_LABELS: Record<ApplicationStage, string> = {
+  Applied: "applied",
+  Waiting: "awaiting response waiting",
+  Scheduling: "scheduling interview scheduling",
+  Assessment: "assessment test challenge",
+  Interviewing: "interviewing interview",
+  Offer: "offer offer received",
+  Rejected: "rejected rejection",
+  Closed: "closed",
+};
+
 function toTime(value: string | null): number {
   if (!value) return 0;
   const t = new Date(value).getTime();
@@ -67,6 +78,7 @@ function windowDaysToMs(days: number): number {
 }
 
 export function ApplicationTable({ applications, windowDays }: ApplicationTableProps) {
+  const [searchQuery, setSearchQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
@@ -86,10 +98,34 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
   const filteredAndSorted = useMemo(() => {
     const now = Date.now();
     const windowMs = windowDaysToMs(windowDays);
+    const searchTokens = searchQuery
+      .toLowerCase()
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
 
     const filtered = applications.filter((app) => {
       const latestSummary = app.events[0]?.summary ?? "";
       const baseTime = toTime(app.appliedAt ?? app.lastActivityAt);
+      const searchable = [
+        app.company,
+        app.role ?? "",
+        app.stage,
+        STAGE_LABELS[app.stage],
+        latestSummary,
+        app.appliedAt ?? "",
+        app.lastActivityAt,
+        app.appliedAt
+          ? formatDistanceToNow(new Date(app.appliedAt), { addSuffix: true })
+          : "",
+        formatDistanceToNow(new Date(app.lastActivityAt), { addSuffix: true }),
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      if (searchTokens.length > 0 && !searchTokens.every((token) => searchable.includes(token))) {
+        return false;
+      }
       if (
         companyFilter &&
         !app.company.toLowerCase().includes(companyFilter.toLowerCase())
@@ -126,6 +162,7 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
     return sorted;
   }, [
     applications,
+    searchQuery,
     companyFilter,
     roleFilter,
     stageFilter,
@@ -146,6 +183,14 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
 
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+      <div className="p-3 border-b border-gray-100 bg-white">
+        <input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search anything (status, company, role, update text, date...)"
+          className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm"
+        />
+      </div>
       <Table>
         <TableHeader>
           <TableRow className="bg-gray-50 hover:bg-gray-50">
