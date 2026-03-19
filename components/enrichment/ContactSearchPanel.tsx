@@ -631,7 +631,7 @@ export function ContactSearchPanel({
                     <th className="px-4 py-2 w-10">#</th>
                     <th className="px-4 py-2">Name</th>
                     <th className="px-4 py-2">Contact Person</th>
-                    <th className="px-4 py-2">Position</th>
+                    <th className="px-4 py-2">Contact Person Position</th>
                     <th className="px-4 py-2">Additional Emails</th>
                     <th className="px-4 py-2">Web</th>
                     <th className="px-4 py-2">Title</th>
@@ -683,7 +683,7 @@ export function ContactSearchPanel({
                         {contact.contactPerson ?? <span className="text-gray-400">—</span>}
                       </td>
                       <td className="px-4 py-2 text-gray-700">
-                        {contact.inferredPosition ?? <span className="text-gray-400">Not inferred yet</span>}
+                        {contact.inferredPosition ?? <span className="text-gray-400"> </span>}
                       </td>
                       <td className="px-4 py-2 text-gray-700">
                         {contact.additionalEmails && contact.additionalEmails.length > 0 ? (

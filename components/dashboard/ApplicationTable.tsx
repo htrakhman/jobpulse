@@ -376,7 +376,7 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
             </TableHead>
             <TableHead className="font-semibold text-gray-700">
               <button onClick={() => toggleSort("contactPosition")} className="hover:text-gray-900">
-                Position
+                Contact Person Position
               </button>
             </TableHead>
             <TableHead className="font-semibold text-gray-700">
@@ -447,7 +447,7 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
               <input
                 value={positionFilter}
                 onChange={(e) => setPositionFilter(e.target.value)}
-                placeholder="Filter position"
+                placeholder="Filter contact position"
                 className="h-8 w-full rounded-md border border-gray-200 px-2 text-xs"
               />
             </TableHead>
@@ -517,7 +517,7 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
                 {app.contactPosition ? (
                   <span className="truncate max-w-[170px] block">{app.contactPosition}</span>
                 ) : (
-                  <span className="text-gray-300">Not inferred yet</span>
+                  <span className="text-gray-300"> </span>
                 )}
               </TableCell>
               <TableCell className="text-gray-600 text-sm">

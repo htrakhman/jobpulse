@@ -73,6 +73,21 @@ const TITLE_KEYWORDS = [
   "principal",
 ];
 
+const TITLE_ACRONYMS = ["ceo", "cto", "cfo", "coo", "cmo", "chro", "vp", "svp", "evp"];
+const INVALID_TITLE_PATTERNS: RegExp[] = [
+  /thanks?\s+for\s+your\s+interest/i,
+  /your\s+application/i,
+  /we\s+received\s+your\s+application/i,
+  /invitation\s*:?\s*interview/i,
+  /interview\s+with/i,
+  /please\s+let\s+me\s+know/i,
+  /this\s+will\s+/i,
+  /next\s+steps/i,
+  /\bdear\b|\bhi\b|\bhello\b/i,
+  /\bregards\b|\bbest\b|\bthanks\b/i,
+  /^re\s*:/i,
+];
+
 let anthropicClient: Anthropic | null = null;
 
 function getAnthropicClient(): Anthropic | null {
@@ -171,6 +186,38 @@ function scoreRecency(receivedAt: Date): number {
   return 0.03;
 }
 
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function sanitizeTitleCandidate(raw: string | null): string | null {
+  if (!raw) return null;
+  let cleaned = raw
+    .replace(/^[>\-\s:|]+/g, "")
+    .replace(/\s*[|]\s*linkedin.*$/i, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  // Keep only the likely title segment if sentence-like.
+  cleaned = cleaned.split(/[.!?]/)[0]?.trim() ?? cleaned;
+  cleaned = cleaned.split(/\s{2,}/)[0]?.trim() ?? cleaned;
+
+  if (!cleaned) return null;
+  if (cleaned.length < 2 || cleaned.length > 80) return null;
+  if (INVALID_TITLE_PATTERNS.some((pattern) => pattern.test(cleaned))) return null;
+
+  const lowered = cleaned.toLowerCase();
+  const hasKeyword = TITLE_KEYWORDS.some((keyword) => lowered.includes(keyword));
+  const hasAcronym = TITLE_ACRONYMS.some((acronym) =>
+    new RegExp(`\\b${acronym}\\b`, "i").test(lowered)
+  );
+  if (!hasKeyword && !hasAcronym) return null;
+
+  const wordCount = cleaned.split(/\s+/).length;
+  if (wordCount > 10) return null;
+  return normalizeWhitespace(cleaned);
+}
+
 function guessTitleFromText(message: GraphMessage): TitleCandidate[] {
   const candidates: TitleCandidate[] = [];
   const text = `${message.subject ?? ""}\n${message.snippet ?? ""}\n${message.bodyText ?? ""}`;
@@ -185,8 +232,10 @@ function guessTitleFromText(message: GraphMessage): TitleCandidate[] {
     if (!TITLE_KEYWORDS.some((k) => normalizedLine.includes(k))) continue;
     if (line.length < 3 || line.length > 100) continue;
     if (/@|http|www\.|linkedin/i.test(line)) continue;
+    const sanitized = sanitizeTitleCandidate(line);
+    if (!sanitized) continue;
     candidates.push({
-      title: line,
+      title: sanitized,
       confidence: 0.45 + scoreRecency(message.receivedAt),
       sourceMessageId: message.id,
       snippet: line,
@@ -197,24 +246,30 @@ function guessTitleFromText(message: GraphMessage): TitleCandidate[] {
     /\b(?:i am|i'm|this is|my name is)\s+[a-z .'-]{2,40},?\s+(?:the\s+)?([a-z][a-z/&,\-\s]{2,70})\s+at\b/i
   );
   if (introMatch?.[1]) {
-    candidates.push({
-      title: introMatch[1].trim(),
-      confidence: 0.62 + scoreRecency(message.receivedAt),
-      sourceMessageId: message.id,
-      snippet: introMatch[0],
-    });
+    const sanitized = sanitizeTitleCandidate(introMatch[1].trim());
+    if (sanitized) {
+      candidates.push({
+        title: sanitized,
+        confidence: 0.62 + scoreRecency(message.receivedAt),
+        sourceMessageId: message.id,
+        snippet: introMatch[0],
+      });
+    }
   }
 
   const linkedinSnippetMatch = text.match(
     /\b[A-Z][A-Za-z .'-]{1,60}\s*[-|]\s*([A-Za-z][A-Za-z/&,\-\s]{2,80})\s*[-|]\s*[A-Za-z][A-Za-z .'-]{1,80}\s*\|?\s*LinkedIn/i
   );
   if (linkedinSnippetMatch?.[1]) {
-    candidates.push({
-      title: linkedinSnippetMatch[1].trim(),
-      confidence: 0.58 + scoreRecency(message.receivedAt),
-      sourceMessageId: message.id,
-      snippet: linkedinSnippetMatch[0],
-    });
+    const sanitized = sanitizeTitleCandidate(linkedinSnippetMatch[1].trim());
+    if (sanitized) {
+      candidates.push({
+        title: sanitized,
+        confidence: 0.58 + scoreRecency(message.receivedAt),
+        sourceMessageId: message.id,
+        snippet: linkedinSnippetMatch[0],
+      });
+    }
   }
 
   return candidates;
@@ -295,13 +350,13 @@ Rules:
     const parsed = JSON.parse(jsonMatch[0]) as { title?: unknown; confidence?: unknown };
     const inferredTitle =
       typeof parsed.title === "string" && parsed.title.trim().length > 0
-        ? parsed.title.trim()
+        ? sanitizeTitleCandidate(parsed.title.trim())
         : null;
     const confidence = Math.max(
       0,
       Math.min(1, typeof parsed.confidence === "number" ? parsed.confidence : 0)
     );
-    return { inferredTitle, confidence };
+    return { inferredTitle: inferredTitle ?? null, confidence };
   } catch {
     return { inferredTitle: null, confidence: 0 };
   }
