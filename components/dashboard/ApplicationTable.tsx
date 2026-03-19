@@ -294,7 +294,7 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
               </TableCell>
               <TableCell className="text-gray-600">
                 <span className="truncate max-w-[180px] block">
-                  {app.role ?? <span className="text-gray-400 italic">Unknown role</span>}
+                  {app.role ?? ""}
                 </span>
               </TableCell>
               <TableCell>

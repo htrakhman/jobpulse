@@ -358,7 +358,7 @@ export function DashboardInsights({
                   <span>{value} ({pct.toFixed(0)}%)</span>
                 </div>
                 <div className="h-2 rounded bg-gray-100 overflow-hidden">
-                  <div className={`h-full ${stage.color}`} style={{ width: `${Math.max(2, pct)}%` }} />
+                  <div className={`h-full ${stage.color}`} style={{ width: `${pct > 0 ? pct : 0}%` }} />
                 </div>
               </div>
             );

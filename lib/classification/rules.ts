@@ -227,7 +227,7 @@ const RULES: Rule[] = [
   {
     name: "interview_request_availability_subject",
     emailType: "interview_request",
-    stage: "Scheduling",
+    stage: "Interviewing",
     match: ({ subject, body }) =>
       subjectContains(subject, "availability request", "interview availability") &&
       bodyContains(body, "interview"),
@@ -235,7 +235,7 @@ const RULES: Rule[] = [
   {
     name: "interview_request_availability_body",
     emailType: "interview_request",
-    stage: "Scheduling",
+    stage: "Interviewing",
     match: ({ body }) =>
       bodyContains(
         body,
@@ -248,6 +248,15 @@ const RULES: Rule[] = [
         "availability for next week",
         "availability this week"
       ),
+  },
+  {
+    name: "interview_next_steps_subject",
+    emailType: "interview_request",
+    stage: "Interviewing",
+    match: ({ subject, body }) =>
+      subjectContains(subject, "next steps", "next step") &&
+      (bodyContains(body, "interview", "availability", "schedule") ||
+        subjectContains(subject, "interview", "availability")),
   },
   {
     name: "interview_scheduling_pending_confirmation",
@@ -269,7 +278,7 @@ const RULES: Rule[] = [
   {
     name: "interview_request_subject",
     emailType: "interview_request",
-    stage: "Scheduling",
+    stage: "Interviewing",
     match: ({ subject }) =>
       subjectContains(
         subject,
@@ -282,7 +291,7 @@ const RULES: Rule[] = [
   {
     name: "interview_request_body_invite",
     emailType: "interview_request",
-    stage: "Scheduling",
+    stage: "Interviewing",
     match: ({ body }) =>
       bodyContains(
         body,
@@ -299,7 +308,7 @@ const RULES: Rule[] = [
   {
     name: "interview_request_hiring_manager",
     emailType: "interview_request",
-    stage: "Scheduling",
+    stage: "Interviewing",
     match: ({ body }) =>
       bodyContainsAll(body, "hiring manager", "interview") ||
       bodyContainsAll(body, "phone screen", "schedule"),

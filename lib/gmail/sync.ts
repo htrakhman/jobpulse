@@ -5,11 +5,11 @@ import { upsertApplication } from "@/lib/services/application.service";
 import { requirePrisma } from "@/lib/prisma";
 
 function buildJobSearchQuery(daysBack: number): string {
-  return `subject:(application OR interview OR invitation OR calendar OR offer OR rejection OR hiring OR "thank you for applying" OR "availability request" OR assessment OR "next steps") newer_than:${daysBack}d`;
+  return `(application OR interview OR invitation OR calendar OR scheduling OR availability OR "next steps" OR "phone screen" OR "hiring manager" OR assessment OR offer OR rejection OR hiring OR "thank you for applying" OR "application received") newer_than:${daysBack}d`;
 }
 
 const BATCH_SIZE = 20;
-const MAX_MESSAGES = 500;
+const MAX_MESSAGES = 2000;
 
 export interface SyncResult {
   processed: number;
