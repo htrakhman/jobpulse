@@ -4,7 +4,7 @@ import {
   buildGoogleSearchUrl,
   isLikelyCompanyDomain,
   normalizeName,
-} from "./contact-graph.utils.ts";
+} from "./contact-graph.utils";
 
 test("normalizeName strips punctuation and spaces", () => {
   assert.equal(normalizeName("  Jane   Doe, PhD "), "jane doe phd");

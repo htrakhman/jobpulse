@@ -1,6 +1,7 @@
 import { requirePrisma } from "@/lib/prisma";
 import { findExistingApplication } from "@/lib/classification/deduplication";
 import type { ClassificationResult, ParsedEmail, ApplicationStage } from "@/types";
+import { dedupeByCompany } from "./company-dedupe";
 
 // Stage priority: higher index = more advanced stage
 const STAGE_PRIORITY: ApplicationStage[] = [
@@ -29,7 +30,6 @@ export async function upsertApplication(
   email: ParsedEmail,
   classification: ClassificationResult
 ): Promise<string> {
-  const prisma = requirePrisma();
   const existingId = await findExistingApplication(userId, email, classification);
 
   if (existingId) {
@@ -59,6 +59,7 @@ async function createApplication(
       company,
       role: classification.role ?? null,
       stage: classification.stage,
+      stageEnteredAt: email.receivedAt,
       appliedAt:
         classification.emailType === "application_confirmation"
           ? email.receivedAt
@@ -95,6 +96,17 @@ async function createApplication(
     },
   });
 
+  await prisma.applicationTransition.create({
+    data: {
+      applicationId: application.id,
+      fromStage: null,
+      toStage: classification.stage,
+      triggerType: "email_classification",
+      triggerEmailId: email.id,
+      transitionedAt: email.receivedAt,
+    },
+  });
+
   return application.id;
 }
 
@@ -115,6 +127,7 @@ async function updateApplication(
   const updateData: Record<string, unknown> = {
     lastActivityAt: email.receivedAt,
   };
+  let stageChangedTo: ApplicationStage | null = null;
 
   // Update role if we now have one
   if (!application.role && classification.role) {
@@ -129,6 +142,8 @@ async function updateApplication(
   // Advance stage if appropriate
   if (shouldUpdateStage(application.stage as ApplicationStage, classification.stage)) {
     updateData.stage = classification.stage;
+    updateData.stageEnteredAt = email.receivedAt;
+    stageChangedTo = classification.stage;
   }
 
   // Add thread ID if not already tracked
@@ -177,6 +192,19 @@ async function updateApplication(
       occurredAt: email.receivedAt,
     },
   });
+
+  if (stageChangedTo) {
+    await prisma.applicationTransition.create({
+      data: {
+        applicationId,
+        fromStage: application.stage as ApplicationStage,
+        toStage: stageChangedTo,
+        triggerType: "email_classification",
+        triggerEmailId: email.id,
+        transitionedAt: email.receivedAt,
+      },
+    });
+  }
 
   return applicationId;
 }
@@ -243,55 +271,6 @@ function extractCompanyFromEmail(email: ParsedEmail): string | null {
 
   const base = domain.split(".")[0];
   return base.charAt(0).toUpperCase() + base.slice(1);
-}
-
-function normalizeCompanyKey(company: string): string {
-  return company
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ");
-}
-
-const COMPANY_STOP_WORDS = new Set([
-  "inc",
-  "llc",
-  "ltd",
-  "corp",
-  "co",
-  "company",
-  "recruiting",
-  "recruitment",
-  "careers",
-  "career",
-  "jobs",
-  "job",
-  "team",
-  "the",
-]);
-
-function canonicalCompanyTokens(company: string): string[] {
-  return normalizeCompanyKey(company)
-    .split(" ")
-    .map((token) => token.trim())
-    .filter((token) => token.length > 1 && !COMPANY_STOP_WORDS.has(token));
-}
-
-function isSameCompanyName(a: string, b: string): boolean {
-  const na = normalizeCompanyKey(a);
-  const nb = normalizeCompanyKey(b);
-  if (!na || !nb) return false;
-  if (na === nb) return true;
-  if ((na.includes(nb) || nb.includes(na)) && Math.min(na.length, nb.length) >= 5) return true;
-
-  const ta = canonicalCompanyTokens(a);
-  const tb = canonicalCompanyTokens(b);
-  if (ta.length === 0 || tb.length === 0) return false;
-  const setB = new Set(tb);
-  const intersection = ta.filter((token) => setB.has(token)).length;
-  const union = new Set([...ta, ...tb]).size;
-  const jaccard = union > 0 ? intersection / union : 0;
-  return jaccard >= 0.75;
 }
 
 export async function getApplicationsForUser(
@@ -406,23 +385,9 @@ export async function getDashboardStats(userId: string, windowDays?: number) {
     }),
   ]);
 
-  const byCompany = new Map<string, (typeof applications)[number]>();
-  for (const app of applications) {
-    const existingEntry = [...byCompany.entries()].find(([, current]) =>
-      isSameCompanyName(current.company, app.company)
-    );
-    const key = existingEntry?.[0] ?? normalizeCompanyKey(app.company);
-    const existing = existingEntry?.[1] ?? byCompany.get(key);
-    if (!existing) {
-      byCompany.set(key, app);
-      continue;
-    }
-    const existingTime = existing.lastActivityAt.getTime();
-    const incomingTime = app.lastActivityAt.getTime();
-    if (incomingTime > existingTime) byCompany.set(key, app);
-  }
-
-  const deduped = [...byCompany.values()];
+  const deduped = dedupeByCompany(
+    applications as Array<{ company: string; stage: ApplicationStage; lastActivityAt: Date } & (typeof applications)[number]>
+  );
   const stageMap = new Map<ApplicationStage, number>();
   for (const stage of STAGE_PRIORITY) stageMap.set(stage, 0);
   for (const app of deduped) {
@@ -559,6 +524,13 @@ function detectInviteDerivedStage(
   receivedAt: Date
 ): ApplicationStage | null {
   const text = `${subject ?? ""}\n${snippet ?? ""}\n${(bodyText ?? "").slice(0, 2500)}`;
+  if (
+    /(not move forward|will not be moving forward|won't be moving forward|other candidates|not selected|regret to inform|unfortunately|rejection)/i.test(
+      text
+    )
+  ) {
+    return null;
+  }
   if (!hasInterviewLanguage(text)) return null;
   const inviteDate = extractLikelyInviteDate(text, receivedAt);
   const hasInvite = detectInviteSignals(text);

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * Watches for file changes and auto-commits + pushes to GitHub.
  * Run: npm run auto:push (or run alongside dev in another terminal)

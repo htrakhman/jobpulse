@@ -3,6 +3,7 @@ import { requirePrisma } from "@/lib/prisma";
 import { syncFromHistory } from "@/lib/gmail/sync";
 import { recomputeContactGraphForUser } from "@/lib/services/contact-graph.service";
 import { generateFollowUpSuggestions } from "@/lib/services/followup.service";
+import { backfillOperationalDataForUser } from "@/lib/services/backfill.service";
 
 // Google Pub/Sub pushes a base64-encoded JSON payload
 interface PubSubMessage {
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
         Promise.all([
           generateFollowUpSuggestions(account.userId),
           recomputeContactGraphForUser(account.userId, { daysBack: 120, limit: 60 }),
+          backfillOperationalDataForUser(account.userId, { limit: 80 }),
         ])
       )
       .catch((err) => console.error("[webhook] Sync error:", err));

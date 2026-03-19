@@ -33,6 +33,21 @@ function bodyContainsAll(body: string, ...terms: string[]): boolean {
   return terms.every((t) => b.includes(lower(t)));
 }
 
+function hasRejectionSignal(subject: string, body: string): boolean {
+  const combined = `${subject}\n${body}`;
+  return (
+    /(not move forward|will not be moving forward|won't be moving forward|other candidates|not selected|regret to inform|unfortunately|rejection)/i.test(
+      combined
+    ) ||
+    bodyContains(
+      body,
+      "decided not to move forward",
+      "we will not be proceeding",
+      "moving forward with other candidates"
+    )
+  );
+}
+
 function detectInterviewInviteStage(ctx: RuleContext): ApplicationStage | null {
   const combined = `${ctx.subject}\n${ctx.body}`;
   const hasInterviewContext =
@@ -372,20 +387,23 @@ const RULES: Rule[] = [
 ];
 
 export function classifyByRules(ctx: RuleContext): Omit<ClassificationResult, "company" | "role" | "recruiterName" | "recruiterEmail" | "atsProvider"> | null {
-  const inviteStage = detectInterviewInviteStage(ctx);
-  if (inviteStage) {
-    return {
-      emailType: "interview_scheduled",
-      stage: inviteStage,
-      confidence: "deterministic",
-    };
-  }
-
   for (const rule of RULES) {
     if (rule.match(ctx)) {
       return {
         emailType: rule.emailType,
         stage: rule.stage,
+        confidence: "deterministic",
+      };
+    }
+  }
+
+  // Evaluate invite stage only after explicit rules, so rejections always win.
+  if (!hasRejectionSignal(ctx.subject, ctx.body)) {
+    const inviteStage = detectInterviewInviteStage(ctx);
+    if (inviteStage) {
+      return {
+        emailType: "interview_scheduled",
+        stage: inviteStage,
         confidence: "deterministic",
       };
     }

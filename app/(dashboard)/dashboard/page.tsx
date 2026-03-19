@@ -9,21 +9,71 @@ import {
   getInterviewRoundsByApplicationIds,
   getInterviewRoundMetrics,
 } from "@/lib/services/application.service";
-import { getFollowUpSuggestions } from "@/lib/services/followup.service";
 import { StatsBar } from "@/components/dashboard/StatsBar";
 import { ApplicationTable } from "@/components/dashboard/ApplicationTable";
 import { StatusFilter } from "@/components/dashboard/StatusFilter";
-import { FollowUpSection } from "@/components/dashboard/FollowUpCard";
 import { SyncButton } from "@/components/dashboard/SyncButton";
 import { DashboardInsights } from "@/components/dashboard/DashboardInsights";
 import { ConnectGmailBanner } from "@/components/dashboard/ConnectGmailBanner";
+import { getDashboardOSPayload } from "@/lib/services/dashboard-metrics.service";
+import { ActionCenter } from "@/components/dashboard/ActionCenter";
+import { FunnelMetrics } from "@/components/dashboard/FunnelMetrics";
+import { FollowupIntelligencePanel } from "@/components/dashboard/FollowupIntelligencePanel";
+import { GoalsPacingPanel } from "@/components/dashboard/GoalsPacingPanel";
+import { AttributionPanel } from "@/components/dashboard/AttributionPanel";
+import { TimeToEventPanel } from "@/components/dashboard/TimeToEventPanel";
+import { SmartInsightsPanel } from "@/components/dashboard/SmartInsightsPanel";
 import type { ApplicationStage } from "@/types";
+import type { DashboardOSPayload } from "@/lib/services/os-metrics.types";
 
 const VALID_STAGES: ApplicationStage[] = [
   "Applied", "Waiting", "Scheduling", "Interviewing", "Assessment", "Offer", "Rejected", "Closed",
 ];
 const VALID_WINDOWS = new Set([30, 90, 180, 365]);
 const RENDER_REFERENCE_MS = Date.now();
+const EMPTY_OS_PAYLOAD: DashboardOSPayload = {
+  actionCenter: {
+    followUpsDueToday: 0,
+    interviewsToPrep: 0,
+    staleApplications: 0,
+    targetRemainingToday: 0,
+    targetRemainingThisWeek: 0,
+    items: [],
+  },
+  funnel: { steps: [], offerRatePer100: 0 },
+  followup: { buckets: { urgent: 0, high: 0, normal: 0, low: 0 }, rows: [] },
+  attribution: {
+    bySource: [],
+    byMethod: [],
+    byResumeVersion: [],
+    bestSource: null,
+    bestResumeVersion: null,
+    referralsOutperformCold: false,
+  },
+  timeToEvent: {
+    avgDaysApplicationToFirstResponse: 0,
+    avgDaysApplicationToInterview: 0,
+    avgDaysInterviewToDecision: 0,
+    avgDaysLastTouchToFollowup: 0,
+    staleBuckets: [],
+  },
+  goals: {
+    dailyApplicationGoal: 0,
+    weeklyApplicationGoal: 0,
+    weeklyInterviewGoal: 0,
+    weeklyNetworkingGoal: 0,
+    weeklyFollowupGoal: 0,
+    applicationsThisWeek: 0,
+    interviewsThisWeek: 0,
+    followupsCompletedThisWeek: 0,
+    projectedApplicationsByWeekEnd: 0,
+    projectedInterviewsByWeekEnd: 0,
+    applicationPacing: "on_track",
+    interviewPacing: "on_track",
+  },
+  insights: [],
+  weightedPipelineScore: 0,
+};
 
 interface DashboardPageProps {
   searchParams: Promise<{
@@ -69,8 +119,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     rejected: 0,
     pendingFollowUps: 0,
   };
-  const emptyApps: Awaited<ReturnType<typeof getApplicationsForUser>> = [];
-  const emptyFollowUps: Awaited<ReturnType<typeof getFollowUpSuggestions>> = [];
 
   // No database — show personal dashboard with empty state (Clerk data only)
   if (!prisma) {
@@ -133,7 +181,6 @@ npm run dev`}
           </div>
         )}
         <StatsBar stats={emptyStats} />
-        <FollowUpSection suggestions={[]} />
         <div className="flex items-center justify-between mb-4">
           <Suspense fallback={null}>
             <StatusFilter />
@@ -174,7 +221,6 @@ npm run dev`}
         </div>
         <ConnectGmailBanner />
         <StatsBar stats={emptyStats} />
-        <FollowUpSection suggestions={[]} />
         <div className="flex items-center justify-between mb-4">
           <Suspense fallback={null}>
             <StatusFilter />
@@ -207,7 +253,7 @@ npm run dev`}
 
   const isConnected = !!connectedAccount;
 
-  const [applications, insightApplications, stats, followUps, roundMetrics] = isConnected
+  const [applications, insightApplications, stats, roundMetrics, osPayload] = isConnected
     ? await Promise.all([
         getApplicationsForUser(
           ownerUserId,
@@ -215,14 +261,13 @@ npm run dev`}
         ),
         getApplicationsForUser(ownerUserId),
         getDashboardStats(ownerUserId, selectedWindow),
-        getFollowUpSuggestions(ownerUserId),
         getInterviewRoundMetrics(ownerUserId, selectedWindow, selectedStages),
+        getDashboardOSPayload(ownerUserId, selectedWindow),
       ])
     : [
         [] as Awaited<ReturnType<typeof getApplicationsForUser>>,
         [] as Awaited<ReturnType<typeof getApplicationsForUser>>,
         emptyStats,
-        [] as Awaited<ReturnType<typeof getFollowUpSuggestions>>,
         {
           total: 0,
           firstRoundCount: 0,
@@ -232,6 +277,7 @@ npm run dev`}
           secondRoundRate: 0,
           thirdRoundRate: 0,
         },
+        EMPTY_OS_PAYLOAD,
       ];
 
   const interviewRoundByAppId = isConnected
@@ -255,6 +301,20 @@ npm run dev`}
       company: app.company,
       role: app.role,
       stage: app.stage,
+      source: app.source,
+      method: app.method,
+      resumeVersion: app.resumeVersion,
+      coverLetterVersion: app.coverLetterVersion,
+      targetPriority: app.targetPriority,
+      salaryBand: app.salaryBand,
+      targetCompMin: app.targetCompMin,
+      targetCompMax: app.targetCompMax,
+      nextAction: app.nextAction,
+      nextActionDate: app.nextActionDate?.toISOString() ?? null,
+      followUpUrgency: app.followUpUrgency,
+      workModelPreference: app.workModelPreference,
+      outreachSent: app.outreachSent,
+      contactedRecruiter: app.contactedRecruiter,
       appliedAt: app.appliedAt?.toISOString() ?? null,
       lastActivityAt: app.lastActivityAt.toISOString(),
       atsProvider: app.atsProvider,
@@ -281,10 +341,6 @@ npm run dev`}
     lastActivityAt: app.lastActivityAt.toISOString(),
   }));
 
-  const serializedFollowUps = followUps.map((f) => ({
-    ...f,
-    dueAt: f.dueAt.toISOString(),
-  }));
   const windowMs = selectedWindow * 24 * 60 * 60 * 1000;
   const nowMs = RENDER_REFERENCE_MS;
   const windowedApps = serializedApps.filter((app) => {
@@ -326,19 +382,23 @@ npm run dev`}
       {/* Connect banner */}
       {!isConnected && <ConnectGmailBanner />}
 
-      {/* Stats */}
-      <StatsBar stats={stats} selectedStages={selectedStages} />
+      {/* Decision-value order */}
+      <ActionCenter actionCenter={osPayload.actionCenter} />
+      <FunnelMetrics funnel={osPayload.funnel} />
+      <FollowupIntelligencePanel followup={osPayload.followup} />
+      <GoalsPacingPanel goals={osPayload.goals} />
+      <AttributionPanel attribution={osPayload.attribution} />
+      <TimeToEventPanel timeToEvent={osPayload.timeToEvent} />
+      <SmartInsightsPanel insights={osPayload.insights} weightedPipelineScore={osPayload.weightedPipelineScore} />
 
-      {/* Insights */}
+      {/* Existing summary + lower priority segmentation */}
+      <StatsBar stats={stats} selectedStages={selectedStages} />
       <DashboardInsights
         applications={serializedInsightApps}
         windowDays={selectedWindow}
         selectedStages={selectedStages}
         roundMetrics={roundMetrics}
       />
-
-      {/* Follow-up suggestions */}
-      <FollowUpSection suggestions={serializedFollowUps} />
 
       {applications.length > 0 && (
         <div className="mb-6 border border-blue-200 bg-blue-50 rounded-xl p-4 flex items-center justify-between gap-3">
@@ -367,7 +427,7 @@ npm run dev`}
         </span>
       </div>
 
-      <ApplicationTable applications={serializedApps} windowDays={selectedWindow} />
+      <ApplicationTable applications={serializedApps} windowDays={selectedWindow} osPayload={osPayload} />
     </div>
   );
 }

@@ -29,6 +29,66 @@ enum EmailType {
   unknown
 }
 
+enum ApplicationSource {
+  linkedin
+  company_site
+  referral
+  recruiter_outreach
+  yc
+  indeed
+  wellfound
+  glassdoor
+  other
+  unknown
+}
+
+enum ApplicationMethod {
+  cold_apply
+  referral
+  warm_intro
+  recruiter_inbound
+  direct_outreach
+  other
+  unknown
+}
+
+enum TargetPriority {
+  dream
+  high
+  medium
+  low
+}
+
+enum FollowUpUrgency {
+  urgent
+  high
+  normal
+  low
+}
+
+enum OfferOutcome {
+  pending
+  accepted
+  declined
+}
+
+enum OutcomeReason {
+  lack_of_experience
+  role_mismatch
+  technical_gap
+  unclear_communication
+  comp_mismatch
+  internal_candidate
+  hiring_freeze
+  unknown
+}
+
+enum WorkModelPreference {
+  remote
+  hybrid
+  onsite
+}
+
 model User {
   id               String            @id // Clerk user ID
   email            String            @unique
@@ -41,6 +101,9 @@ model User {
   applications     Application[]
   contacts         ApplicationContact[]
   followUps        FollowUpSuggestion[]
+  goals            UserGoal[]
+  goalSnapshots    GoalSnapshot[]
+  interviewReviews InterviewReview[]
   savedSearches    SavedSearch[]
   searchRuns       SearchRun[]
 }
@@ -87,6 +150,29 @@ model Application {
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   company         String
   role            String?
+  source          ApplicationSource @default(unknown)
+  method          ApplicationMethod @default(unknown)
+  resumeVersion   String?
+  coverLetterVersion String?
+  targetPriority  TargetPriority    @default(medium)
+  salaryBand      String?
+  targetCompMin   Int?
+  targetCompMax   Int?
+  roleDesirabilityScore Int?
+  companyDesirabilityScore Int?
+  fitScore        Int?
+  locationPreferenceFit Int?
+  workModelPreference WorkModelPreference?
+  outreachSent    Boolean           @default(false)
+  contactedRecruiter Boolean        @default(false)
+  nextAction      String?
+  nextActionDate  DateTime?
+  followUpUrgency FollowUpUrgency?
+  daysSinceLastTouch Int?
+  stageEnteredAt  DateTime?
+  lastRespondedAt DateTime?
+  offerOutcome    OfferOutcome?
+  closedReason    OutcomeReason?
   stage           ApplicationStage @default(Applied)
   appliedAt       DateTime?
   lastActivityAt  DateTime         @default(now())
@@ -95,6 +181,9 @@ model Application {
   recruiter       RecruiterContact?
   emails          EmailMessage[]
   events          ApplicationEvent[]
+  transitions     ApplicationTransition[]
+  activities      ApplicationActivity[]
+  interviewReviews InterviewReview[]
   followUps       FollowUpSuggestion[]
   contacts        ApplicationContact[]
   enrichedContacts EnrichedContact[]
@@ -107,6 +196,10 @@ model Application {
   @@index([userId])
   @@index([userId, stage])
   @@index([userId, company])
+  @@index([userId, source])
+  @@index([userId, method])
+  @@index([userId, targetPriority])
+  @@index([nextActionDate])
 }
 
 model SavedSearch {
@@ -246,13 +339,103 @@ model FollowUpSuggestion {
   application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   reason        String
   dueAt         DateTime
+  urgency       FollowUpUrgency?
+  recommendedAction String?
+  recommendationReason String?
+  daysSinceLastTouch Int?
+  nextStepDate  DateTime?
+  generatedBy   String?
   dismissed     Boolean     @default(false)
+  dismissedAt   DateTime?
   completed     Boolean     @default(false)
+  completedAt   DateTime?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
   @@index([userId, dismissed, completed])
   @@index([applicationId])
+  @@index([urgency, dueAt])
+}
+
+model ApplicationTransition {
+  id              String           @id @default(cuid())
+  applicationId   String
+  application     Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStage       ApplicationStage?
+  toStage         ApplicationStage
+  triggerType     String?
+  triggerEmailId  String?
+  transitionedAt  DateTime
+  createdAt       DateTime         @default(now())
+
+  @@index([applicationId, transitionedAt])
+  @@index([toStage, transitionedAt])
+}
+
+model ApplicationActivity {
+  id             String      @id @default(cuid())
+  applicationId  String
+  application    Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  kind           String
+  summary        String?
+  occurredAt     DateTime
+  metadata       Json?
+  createdAt      DateTime    @default(now())
+
+  @@index([applicationId, occurredAt])
+}
+
+model InterviewReview {
+  id               String       @id @default(cuid())
+  userId           String
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicationId    String
+  application      Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  interviewType    String?
+  roundNumber      Int?
+  confidenceRating Int?
+  performanceRating Int?
+  roleFitRating    Int?
+  interviewerVibe  Int?
+  difficulty       Int?
+  notes            String?      @db.Text
+  outcomeReason    OutcomeReason?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([applicationId])
+}
+
+model UserGoal {
+  id                     String   @id @default(cuid())
+  userId                 String
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyApplicationGoal   Int      @default(5)
+  weeklyApplicationGoal  Int      @default(25)
+  weeklyInterviewGoal    Int      @default(3)
+  weeklyNetworkingGoal   Int      @default(5)
+  weeklyFollowupGoal     Int      @default(10)
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([userId, isActive])
+}
+
+model GoalSnapshot {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  windowStart        DateTime
+  windowEnd          DateTime
+  applicationsCount  Int      @default(0)
+  interviewsCount    Int      @default(0)
+  networkingCount    Int      @default(0)
+  followupCount      Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  @@index([userId, windowStart, windowEnd])
 }
 
 // ─── Enrichment & Outreach ────────────────────────────────────────────────────

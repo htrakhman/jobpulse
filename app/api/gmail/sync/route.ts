@@ -5,6 +5,7 @@ import { syncInbox } from "@/lib/gmail/sync";
 import { reconcileInterviewInvites } from "@/lib/services/application.service";
 import { recomputeContactGraphForUser } from "@/lib/services/contact-graph.service";
 import { generateFollowUpSuggestions } from "@/lib/services/followup.service";
+import { backfillOperationalDataForUser } from "@/lib/services/backfill.service";
 
 const ALLOWED_WINDOWS = new Set([30, 90, 180, 365]);
 const FULL_RESCAN_DAYS = 3650;
@@ -55,6 +56,11 @@ export async function POST(request: Request) {
         limit: 80,
       }).catch((recomputeErr) =>
         console.error("[api/gmail/sync] contact graph recompute failed:", recomputeErr)
+      );
+      void backfillOperationalDataForUser(ownerUserId, {
+        limit: fullRescan ? 300 : 120,
+      }).catch((backfillErr) =>
+        console.error("[api/gmail/sync] operational backfill failed:", backfillErr)
       );
     }, 0);
 
