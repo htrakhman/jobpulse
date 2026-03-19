@@ -87,6 +87,44 @@ function windowDaysToMs(days: number): number {
   return days * 24 * 60 * 60 * 1000;
 }
 
+function normalizeCompanyKey(company: string): string {
+  return company.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function pickPreferredCompanyRow(current: Application, candidate: Application): Application {
+  const currentActivity = toTime(current.lastActivityAt);
+  const candidateActivity = toTime(candidate.lastActivityAt);
+  if (candidateActivity !== currentActivity) {
+    return candidateActivity > currentActivity ? candidate : current;
+  }
+
+  const currentStageRank = STAGE_ORDER.indexOf(current.stage);
+  const candidateStageRank = STAGE_ORDER.indexOf(candidate.stage);
+  if (candidateStageRank !== currentStageRank) {
+    return candidateStageRank > currentStageRank ? candidate : current;
+  }
+
+  const currentRound = current.interviewRound ?? 0;
+  const candidateRound = candidate.interviewRound ?? 0;
+  if (candidateRound !== currentRound) {
+    return candidateRound > currentRound ? candidate : current;
+  }
+
+  const currentContactScore =
+    (current.contactPerson ? 2 : 0) +
+    (current.contactPosition ? 1 : 0) +
+    (current.additionalEmails.length > 0 ? 1 : 0);
+  const candidateContactScore =
+    (candidate.contactPerson ? 2 : 0) +
+    (candidate.contactPosition ? 1 : 0) +
+    (candidate.additionalEmails.length > 0 ? 1 : 0);
+  if (candidateContactScore !== currentContactScore) {
+    return candidateContactScore > currentContactScore ? candidate : current;
+  }
+
+  return candidate;
+}
+
 export function ApplicationTable({ applications, windowDays }: ApplicationTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
@@ -120,13 +158,24 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
   const filteredAndSorted = useMemo(() => {
     const now = RENDER_REFERENCE_MS;
     const windowMs = windowDaysToMs(windowDays);
+    const byCompany = new Map<string, Application>();
+    for (const app of applications) {
+      const key = normalizeCompanyKey(app.company);
+      const existing = byCompany.get(key);
+      if (!existing) {
+        byCompany.set(key, app);
+        continue;
+      }
+      byCompany.set(key, pickPreferredCompanyRow(existing, app));
+    }
+    const dedupedApplications = [...byCompany.values()];
     const searchTokens = searchQuery
       .toLowerCase()
       .trim()
       .split(/\s+/)
       .filter(Boolean);
 
-    const filtered = applications.filter((app) => {
+    const filtered = dedupedApplications.filter((app) => {
       const latestSummary = app.events[0]?.summary ?? "";
       const baseTime = toTime(app.appliedAt ?? app.lastActivityAt);
       const searchable = [
