@@ -28,6 +28,7 @@ const RENDER_REFERENCE_MS = Date.now();
 interface DashboardPageProps {
   searchParams: Promise<{
     stage?: string;
+    stages?: string;
     connected?: string;
     error?: string;
     scan?: string;
@@ -44,10 +45,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const clerkUser = await currentUser();
   const params = await searchParams;
-  const stageFilter =
-    params.stage && VALID_STAGES.includes(params.stage as ApplicationStage)
-      ? (params.stage as ApplicationStage)
-      : undefined;
+  const selectedStages = (
+    params.stages
+      ? params.stages.split(",")
+      : params.stage
+      ? [params.stage]
+      : []
+  ).filter((value): value is ApplicationStage =>
+    VALID_STAGES.includes(value as ApplicationStage)
+  );
   const selectedWindow = VALID_WINDOWS.has(Number(params.window))
     ? Number(params.window)
     : 30;
@@ -203,11 +209,14 @@ npm run dev`}
 
   const [applications, insightApplications, stats, followUps, roundMetrics] = isConnected
     ? await Promise.all([
-        getApplicationsForUser(ownerUserId, stageFilter ? { stage: stageFilter } : undefined),
+        getApplicationsForUser(
+          ownerUserId,
+          selectedStages.length > 0 ? { stages: selectedStages } : undefined
+        ),
         getApplicationsForUser(ownerUserId),
-        getDashboardStats(ownerUserId),
+        getDashboardStats(ownerUserId, selectedWindow),
         getFollowUpSuggestions(ownerUserId),
-        getInterviewRoundMetrics(ownerUserId, selectedWindow, stageFilter),
+        getInterviewRoundMetrics(ownerUserId, selectedWindow, selectedStages),
       ])
     : [
         [] as Awaited<ReturnType<typeof getApplicationsForUser>>,
@@ -317,13 +326,13 @@ npm run dev`}
       {!isConnected && <ConnectGmailBanner />}
 
       {/* Stats */}
-      <StatsBar stats={stats} selectedStage={stageFilter} />
+      <StatsBar stats={stats} selectedStages={selectedStages} />
 
       {/* Insights */}
       <DashboardInsights
         applications={serializedInsightApps}
         windowDays={selectedWindow}
-        selectedStage={stageFilter}
+        selectedStages={selectedStages}
         roundMetrics={roundMetrics}
       />
 

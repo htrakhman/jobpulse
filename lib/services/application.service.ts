@@ -245,15 +245,68 @@ function extractCompanyFromEmail(email: ParsedEmail): string | null {
   return base.charAt(0).toUpperCase() + base.slice(1);
 }
 
+function normalizeCompanyKey(company: string): string {
+  return company
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+const COMPANY_STOP_WORDS = new Set([
+  "inc",
+  "llc",
+  "ltd",
+  "corp",
+  "co",
+  "company",
+  "recruiting",
+  "recruitment",
+  "careers",
+  "career",
+  "jobs",
+  "job",
+  "team",
+  "the",
+]);
+
+function canonicalCompanyTokens(company: string): string[] {
+  return normalizeCompanyKey(company)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1 && !COMPANY_STOP_WORDS.has(token));
+}
+
+function isSameCompanyName(a: string, b: string): boolean {
+  const na = normalizeCompanyKey(a);
+  const nb = normalizeCompanyKey(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if ((na.includes(nb) || nb.includes(na)) && Math.min(na.length, nb.length) >= 5) return true;
+
+  const ta = canonicalCompanyTokens(a);
+  const tb = canonicalCompanyTokens(b);
+  if (ta.length === 0 || tb.length === 0) return false;
+  const setB = new Set(tb);
+  const intersection = ta.filter((token) => setB.has(token)).length;
+  const union = new Set([...ta, ...tb]).size;
+  const jaccard = union > 0 ? intersection / union : 0;
+  return jaccard >= 0.75;
+}
+
 export async function getApplicationsForUser(
   userId: string,
-  filters?: { stage?: ApplicationStage }
+  filters?: { stage?: ApplicationStage; stages?: ApplicationStage[] }
 ) {
   const prisma = requirePrisma();
   return prisma.application.findMany({
     where: {
       userId,
-      ...(filters?.stage ? { stage: filters.stage } : {}),
+      ...(filters?.stages && filters.stages.length > 0
+        ? { stage: { in: filters.stages } }
+        : filters?.stage
+        ? { stage: filters.stage }
+        : {}),
     },
     include: {
       recruiter: true,
@@ -316,30 +369,66 @@ export async function getApplicationById(userId: string, applicationId: string) 
   });
 }
 
-export async function getDashboardStats(userId: string) {
+export async function getDashboardStats(userId: string, windowDays?: number) {
   const prisma = requirePrisma();
-  const [counts, pendingFollowUps] = await Promise.all([
-    prisma.application.groupBy({
-      by: ["stage"],
-      where: { userId },
-      _count: { id: true },
+  const cutoff =
+    typeof windowDays === "number" && windowDays > 0
+      ? new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000)
+      : null;
+  const [applications, pendingFollowUps] = await Promise.all([
+    prisma.application.findMany({
+      where: {
+        userId,
+        ...(cutoff
+          ? { OR: [{ appliedAt: { gte: cutoff } }, { lastActivityAt: { gte: cutoff } }] }
+          : {}),
+      },
+      select: {
+        id: true,
+        company: true,
+        stage: true,
+        appliedAt: true,
+        lastActivityAt: true,
+      },
+      orderBy: { lastActivityAt: "desc" },
     }),
     prisma.followUpSuggestion.count({
       where: { userId, dismissed: false, completed: false },
     }),
   ]);
 
-  const stageMap = Object.fromEntries(counts.map((c: { stage: string; _count: { id: number } }) => [c.stage, c._count.id]));
+  const byCompany = new Map<string, (typeof applications)[number]>();
+  for (const app of applications) {
+    const existingEntry = [...byCompany.entries()].find(([, current]) =>
+      isSameCompanyName(current.company, app.company)
+    );
+    const key = existingEntry?.[0] ?? normalizeCompanyKey(app.company);
+    const existing = existingEntry?.[1] ?? byCompany.get(key);
+    if (!existing) {
+      byCompany.set(key, app);
+      continue;
+    }
+    const existingTime = existing.lastActivityAt.getTime();
+    const incomingTime = app.lastActivityAt.getTime();
+    if (incomingTime > existingTime) byCompany.set(key, app);
+  }
+
+  const deduped = [...byCompany.values()];
+  const stageMap = new Map<ApplicationStage, number>();
+  for (const stage of STAGE_PRIORITY) stageMap.set(stage, 0);
+  for (const app of deduped) {
+    stageMap.set(app.stage as ApplicationStage, (stageMap.get(app.stage as ApplicationStage) ?? 0) + 1);
+  }
 
   return {
-    total: counts.reduce((sum: number, c: { _count: { id: number } }) => sum + c._count.id, 0),
-    applied: stageMap["Applied"] ?? 0,
-    waiting: stageMap["Waiting"] ?? 0,
-    scheduling: stageMap["Scheduling"] ?? 0,
-    assessment: stageMap["Assessment"] ?? 0,
-    interviewing: stageMap["Interviewing"] ?? 0,
-    offers: stageMap["Offer"] ?? 0,
-    rejected: stageMap["Rejected"] ?? 0,
+    total: deduped.length,
+    applied: stageMap.get("Applied") ?? 0,
+    waiting: stageMap.get("Waiting") ?? 0,
+    scheduling: stageMap.get("Scheduling") ?? 0,
+    assessment: stageMap.get("Assessment") ?? 0,
+    interviewing: stageMap.get("Interviewing") ?? 0,
+    offers: stageMap.get("Offer") ?? 0,
+    rejected: stageMap.get("Rejected") ?? 0,
     pendingFollowUps,
   };
 }
@@ -629,7 +718,7 @@ export async function getInterviewRoundsByApplicationIds(
 export async function getInterviewRoundMetrics(
   userId: string,
   windowDays: number,
-  stage?: ApplicationStage
+  stages?: ApplicationStage[]
 ): Promise<InterviewRoundMetrics> {
   const prisma = requirePrisma();
   const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
@@ -637,7 +726,7 @@ export async function getInterviewRoundMetrics(
   const applications = await prisma.application.findMany({
     where: {
       userId,
-      ...(stage ? { stage } : {}),
+      ...(stages && stages.length > 0 ? { stage: { in: stages } } : {}),
       OR: [{ appliedAt: { gte: cutoff } }, { lastActivityAt: { gte: cutoff } }],
     },
     select: {

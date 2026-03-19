@@ -7,18 +7,26 @@ import type { DashboardStats } from "@/types";
 
 interface StatsBarProps {
   stats: DashboardStats;
-  selectedStage?: ApplicationStage;
+  selectedStages?: ApplicationStage[];
 }
 
-export function StatsBar({ stats, selectedStage }: StatsBarProps) {
+export function StatsBar({ stats, selectedStages = [] }: StatsBarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   function applyStage(stage: ApplicationStage | null) {
     const params = new URLSearchParams(searchParams.toString());
-    if (stage) params.set("stage", stage);
-    else params.delete("stage");
+    const next = new Set(selectedStages);
+    if (stage) {
+      if (next.has(stage)) next.delete(stage);
+      else next.add(stage);
+      if (next.size > 0) params.set("stages", [...next].join(","));
+      else params.delete("stages");
+    } else {
+      params.delete("stages");
+    }
+    params.delete("stage");
     router.push(`${pathname}?${params.toString()}`);
   }
 
@@ -91,6 +99,7 @@ export function StatsBar({ stats, selectedStage }: StatsBarProps) {
       value: stats.pendingFollowUps,
       color: "text-amber-600",
       stage: null as ApplicationStage | null,
+      clickable: false,
       info:
         "Open follow-up reminders generated from inactivity windows (typically Applied/Waiting with no new activity past follow-up thresholds).",
     },
@@ -102,7 +111,8 @@ export function StatsBar({ stats, selectedStage }: StatsBarProps) {
         <Card
           key={item.label}
           className={`relative overflow-visible shadow-none border border-gray-200 transition-colors ${
-            (item.stage && selectedStage === item.stage) || (!item.stage && !selectedStage)
+            (item.stage && selectedStages.includes(item.stage)) ||
+            (!item.stage && item.label === "Total Applications" && selectedStages.length === 0)
               ? "ring-2 ring-gray-900 border-gray-900"
               : ""
           }`}
@@ -112,7 +122,14 @@ export function StatsBar({ stats, selectedStage }: StatsBarProps) {
               type="button"
               onClick={() => applyStage(item.stage)}
               className="w-full text-left"
-              title={item.stage ? `Filter dashboard by ${item.label}` : "Show all stages"}
+              disabled={item.clickable === false}
+              title={
+                item.clickable === false
+                  ? `Info about ${item.label}`
+                  : item.stage
+                  ? `Toggle ${item.label} filter`
+                  : "Show all stages"
+              }
             >
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
               <span className="inline-flex items-center gap-1.5">

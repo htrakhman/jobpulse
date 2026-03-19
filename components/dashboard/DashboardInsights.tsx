@@ -15,7 +15,7 @@ interface InsightApplication {
 interface DashboardInsightsProps {
   applications: InsightApplication[];
   windowDays: number;
-  selectedStage?: ApplicationStage;
+  selectedStages?: ApplicationStage[];
   roundMetrics: {
     total: number;
     firstRoundCount: number;
@@ -50,6 +50,16 @@ const INDUSTRY_COLORS = [
 ];
 
 const SIZE_COLORS = ["#2563eb", "#16a34a", "#f97316", "#6b7280"];
+const STAGE_PRIORITY: ApplicationStage[] = [
+  "Applied",
+  "Waiting",
+  "Scheduling",
+  "Assessment",
+  "Interviewing",
+  "Offer",
+  "Rejected",
+  "Closed",
+];
 
 function niceAxisMax(value: number): number {
   if (value <= 1) return 2;
@@ -60,6 +70,70 @@ function niceAxisMax(value: number): number {
   if (fraction <= 2) return 2 * base;
   if (fraction <= 5) return 5 * base;
   return 10 * base;
+}
+
+function normalizeCompanyKey(company: string): string {
+  return company
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+const COMPANY_STOP_WORDS = new Set([
+  "inc",
+  "llc",
+  "ltd",
+  "corp",
+  "co",
+  "company",
+  "recruiting",
+  "recruitment",
+  "careers",
+  "career",
+  "jobs",
+  "job",
+  "team",
+  "the",
+]);
+
+function canonicalCompanyTokens(company: string): string[] {
+  return normalizeCompanyKey(company)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1 && !COMPANY_STOP_WORDS.has(token));
+}
+
+function isSameCompanyName(a: string, b: string): boolean {
+  const na = normalizeCompanyKey(a);
+  const nb = normalizeCompanyKey(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if ((na.includes(nb) || nb.includes(na)) && Math.min(na.length, nb.length) >= 5) return true;
+  const ta = canonicalCompanyTokens(a);
+  const tb = canonicalCompanyTokens(b);
+  if (ta.length === 0 || tb.length === 0) return false;
+  const setB = new Set(tb);
+  const intersection = ta.filter((token) => setB.has(token)).length;
+  const union = new Set([...ta, ...tb]).size;
+  const jaccard = union > 0 ? intersection / union : 0;
+  return jaccard >= 0.75;
+}
+
+function eventTime(app: InsightApplication): number {
+  return new Date(app.appliedAt ?? app.lastActivityAt).getTime();
+}
+
+function pickPreferredCompanyRow(
+  current: InsightApplication,
+  candidate: InsightApplication
+): InsightApplication {
+  const currentTime = eventTime(current);
+  const candidateTime = eventTime(candidate);
+  if (candidateTime !== currentTime) return candidateTime > currentTime ? candidate : current;
+  const currentStageRank = STAGE_PRIORITY.indexOf(current.stage);
+  const candidateStageRank = STAGE_PRIORITY.indexOf(candidate.stage);
+  return candidateStageRank > currentStageRank ? candidate : current;
 }
 
 function inferIndustry(company: string, role: string | null): string {
@@ -146,16 +220,31 @@ function DonutChart({
 export function DashboardInsights({
   applications,
   windowDays,
-  selectedStage,
+  selectedStages = [],
   roundMetrics,
 }: DashboardInsightsProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const now = new Date();
   const windowMs = windowDays * 24 * 60 * 60 * 1000;
-  const filteredApps = applications.filter((app) => {
+  const byCompany = new Map<string, InsightApplication>();
+  for (const app of applications) {
+    const existingEntry = [...byCompany.entries()].find(([, existing]) =>
+      isSameCompanyName(existing.company, app.company)
+    );
+    const key = existingEntry?.[0] ?? normalizeCompanyKey(app.company);
+    const existing = existingEntry?.[1] ?? byCompany.get(key);
+    if (!existing) {
+      byCompany.set(key, app);
+    } else {
+      byCompany.set(key, pickPreferredCompanyRow(existing, app));
+    }
+  }
+  const dedupedApps = [...byCompany.values()];
+
+  const filteredApps = dedupedApps.filter((app) => {
     const source = app.appliedAt ? new Date(app.appliedAt) : new Date(app.lastActivityAt);
     if (now.getTime() - source.getTime() > windowMs) return false;
-    if (selectedStage && app.stage !== selectedStage) return false;
+    if (selectedStages.length > 0 && !selectedStages.includes(app.stage)) return false;
     return true;
   });
 
@@ -238,9 +327,9 @@ export function DashboardInsights({
             <span className="rounded bg-gray-50 px-2 py-1">Total <strong className="text-gray-700">{total}</strong></span>
             <span className="rounded bg-gray-50 px-2 py-1">Avg/day <strong className="text-gray-700">{averagePerDay.toFixed(2)}</strong></span>
             <span className="rounded bg-gray-50 px-2 py-1">Peak day <strong className="text-gray-700">{peak.count}</strong></span>
-            {selectedStage && (
+            {selectedStages.length > 0 && (
               <span className="rounded bg-gray-900 text-white px-2 py-1">
-                Stage: <strong>{selectedStage}</strong>
+                Stage: <strong>{selectedStages.join(", ")}</strong>
               </span>
             )}
           </div>

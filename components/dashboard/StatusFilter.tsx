@@ -18,14 +18,33 @@ export function StatusFilter() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const current = searchParams.get("stage") ?? "";
+  const currentStagesRaw = searchParams.get("stages");
+  const currentLegacy = searchParams.get("stage");
+  const currentStages = new Set(
+    (currentStagesRaw
+      ? currentStagesRaw.split(",")
+      : currentLegacy
+      ? [currentLegacy]
+      : []
+    ).filter(Boolean)
+  );
 
   function handleSelect(value: string) {
     const params = new URLSearchParams(searchParams.toString());
-    if (value) {
-      params.set("stage", value);
-    } else {
+    if (!value) {
       params.delete("stage");
+      params.delete("stages");
+      router.push(`${pathname}?${params.toString()}`);
+      return;
+    }
+    const next = new Set(currentStages);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    params.delete("stage");
+    if (next.size > 0) {
+      params.set("stages", [...next].join(","));
+    } else {
+      params.delete("stages");
     }
     router.push(`${pathname}?${params.toString()}`);
   }
@@ -37,7 +56,11 @@ export function StatusFilter() {
           key={s.value}
           onClick={() => handleSelect(s.value)}
           className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-            current === s.value
+            s.value === ""
+              ? currentStages.size === 0
+                ? "bg-gray-900 text-white"
+                : "bg-white text-gray-600 border border-gray-200 hover:border-gray-400"
+              : currentStages.has(s.value)
               ? "bg-gray-900 text-white"
               : "bg-white text-gray-600 border border-gray-200 hover:border-gray-400"
           }`}
