@@ -1,7 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requirePrisma } from "@/lib/prisma";
-import { searchPeopleAtCompany } from "@/lib/enrichment/waterfall";
+import { searchPeopleAtCompanyWorkspace } from "@/lib/enrichment/waterfall";
+import type { PeopleSortMode } from "@/lib/enrichment/types";
 
 export async function POST(request: NextRequest) {
   const { userId } = await auth();
@@ -10,12 +11,37 @@ export async function POST(request: NextRequest) {
   const prisma = requirePrisma();
   const body = await request.json() as {
     applicationId: string;
-    titleKeywords?: string[];
+    titleKeywords?: string[]; // legacy include titles
+    includeTitles?: string[];
+    excludeTitles?: string[];
     department?: string;
+    seniority?: string;
+    location?: string;
+    includeKeywords?: string[];
+    excludeKeywords?: string[];
+    sortMode?: PeopleSortMode;
+    page?: number;
+    pageSize?: number;
     maxResults?: number;
+    savedSearchId?: string;
   };
 
-  const { applicationId, titleKeywords = [], maxResults = 10 } = body;
+  const {
+    applicationId,
+    titleKeywords = [],
+    includeTitles,
+    excludeTitles,
+    department,
+    seniority,
+    location,
+    includeKeywords,
+    excludeKeywords,
+    sortMode = "relevance",
+    page = 1,
+    pageSize = 25,
+    maxResults = 80,
+    savedSearchId,
+  } = body;
 
   if (!applicationId) {
     return NextResponse.json({ error: "applicationId required" }, { status: 400 });
@@ -32,20 +58,42 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const people = await searchPeopleAtCompany(
-      application.company,
-      titleKeywords,
-      maxResults
-    );
+    const effectiveIncludeTitles =
+      includeTitles && includeTitles.length > 0 ? includeTitles : titleKeywords;
+
+    const searchStartedAt = Date.now();
+    const searchResult = await searchPeopleAtCompanyWorkspace({
+      company: application.company,
+      includeTitles: effectiveIncludeTitles,
+      excludeTitles,
+      department,
+      seniority,
+      location,
+      includeKeywords,
+      excludeKeywords,
+      page,
+      pageSize,
+      maxResults,
+      sortMode,
+    });
+    const durationMs = Date.now() - searchStartedAt;
 
     // Save found people as EnrichedContact records
     const contacts = await Promise.all(
-      people.map(async (person) => {
-        // Check if already exists
+      searchResult.results.map(async (person) => {
+        const uniqueMatchers: Array<Record<string, string>> = [];
+        if (person.linkedinUrl) uniqueMatchers.push({ linkedinUrl: person.linkedinUrl });
+        if (person.email) uniqueMatchers.push({ email: person.email });
+        if (person.fullName) {
+          uniqueMatchers.push({
+            fullName: person.fullName,
+            ...(person.title ? { title: person.title } : {}),
+          });
+        }
         const existing = await prisma.enrichedContact.findFirst({
           where: {
             applicationId,
-            fullName: person.fullName ?? undefined,
+            ...(uniqueMatchers.length > 0 ? { OR: uniqueMatchers } : {}),
           },
         });
 
@@ -80,7 +128,59 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ contacts, total: contacts.length });
+    await prisma.searchRun.create({
+      data: {
+        userId,
+        applicationId,
+        savedSearchId: savedSearchId ?? undefined,
+        filterPayload: {
+          includeTitles: effectiveIncludeTitles,
+          excludeTitles,
+          department,
+          seniority,
+          location,
+          includeKeywords,
+          excludeKeywords,
+        },
+        sortMode,
+        page,
+        pageSize,
+        resultCount: contacts.length,
+        totalCount: searchResult.total,
+        durationMs,
+        providerSummary: searchResult.providerDiagnostics,
+      },
+    });
+
+    if (savedSearchId) {
+      await prisma.savedSearch.updateMany({
+        where: { id: savedSearchId, userId },
+        data: {
+          lastRunAt: new Date(),
+          lastResultCount: searchResult.total,
+          filterPayload: {
+            includeTitles: effectiveIncludeTitles,
+            excludeTitles,
+            department,
+            seniority,
+            location,
+            includeKeywords,
+            excludeKeywords,
+          },
+          sortMode,
+          maxResults,
+          pageSize,
+        },
+      });
+    }
+
+    return NextResponse.json({
+      contacts,
+      total: searchResult.total,
+      page: searchResult.page,
+      pageSize: searchResult.pageSize,
+      providerDiagnostics: searchResult.providerDiagnostics,
+    });
   } catch (err) {
     console.error("[enrichment/search]", err);
     return NextResponse.json({ error: "Search failed" }, { status: 500 });

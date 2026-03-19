@@ -16,6 +16,12 @@ export interface PersonResult {
   source: ProviderName;
 }
 
+export interface RankedPersonResult extends PersonResult {
+  score: number;
+  matchedSignals: string[];
+  sources: ProviderName[];
+}
+
 export interface EmailResult {
   email: string;
   verified: boolean;
@@ -84,4 +90,48 @@ export interface WaterfallResult {
   steps: WaterfallStep[];
   emailFound: boolean;
   linkedinFound: boolean;
+}
+
+export type PeopleSortMode =
+  | "relevance"
+  | "name_asc"
+  | "name_desc"
+  | "title_asc"
+  | "title_desc";
+
+export interface PeopleSearchFilters {
+  includeTitles?: string[];
+  excludeTitles?: string[];
+  department?: string;
+  seniority?: string;
+  location?: string;
+  includeKeywords?: string[];
+  excludeKeywords?: string[];
+}
+
+export interface PeopleSearchOptions extends PeopleSearchFilters {
+  company: string;
+  companyDomain?: string;
+  page?: number;
+  pageSize?: number;
+  maxResults?: number;
+  sortMode?: PeopleSortMode;
+}
+
+export interface ProviderSearchDiagnostic {
+  provider: ProviderName;
+  available: boolean;
+  attempted: boolean;
+  status: "hit" | "miss" | "error" | "skipped";
+  resultCount: number;
+  responseMs?: number;
+  error?: string;
+}
+
+export interface PeopleSearchResponse {
+  results: RankedPersonResult[];
+  total: number;
+  page: number;
+  pageSize: number;
+  providerDiagnostics: ProviderSearchDiagnostic[];
 }

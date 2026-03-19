@@ -1,5 +1,14 @@
 import { requirePrisma } from "@/lib/prisma";
-import type { WaterfallStep, WaterfallResult, PersonResult, ProviderName } from "./types";
+import type {
+  WaterfallStep,
+  WaterfallResult,
+  PersonResult,
+  ProviderName,
+  PeopleSearchOptions,
+  PeopleSearchResponse,
+  ProviderSearchDiagnostic,
+  RankedPersonResult,
+} from "./types";
 import { apolloProvider } from "./providers/apollo";
 import { hunterProvider } from "./providers/hunter";
 import { pdlProvider } from "./providers/pdl";
@@ -60,71 +69,254 @@ const PROVIDERS: Record<string, import("./types").EnrichmentProvider> = {
 
 export type WaterfallProgressCallback = (step: WaterfallStep) => void;
 
+const PROVIDER_ENV_CHECKS: Record<ProviderName, () => boolean> = {
+  apollo: () => !!process.env.APOLLO_API_KEY,
+  hunter: () => !!process.env.HUNTER_API_KEY,
+  pdl: () => !!process.env.PDL_API_KEY,
+  proxycurl: () => !!process.env.PROXYCURL_API_KEY,
+  lusha: () => !!process.env.LUSHA_API_KEY,
+  contactout: () => !!process.env.CONTACTOUT_API_KEY,
+  fullenrich: () => !!process.env.FULLENRICH_API_KEY,
+  snovio: () => !!process.env.SNOVIO_API_KEY,
+  zerobounce: () => !!process.env.ZEROBOUNCE_API_KEY,
+  mixrank: () => !!process.env.APOLLO_API_KEY,
+  icypeas: () => !!process.env.ICYPEAS_API_KEY,
+  leadmagic: () => !!process.env.LEADMAGIC_API_KEY,
+};
+
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function containsAny(haystack: string, needles: string[]): boolean {
+  if (needles.length === 0) return true;
+  return needles.some((needle) => haystack.includes(normalizeText(needle)));
+}
+
+function containsNone(haystack: string, needles: string[]): boolean {
+  if (needles.length === 0) return true;
+  return needles.every((needle) => !haystack.includes(normalizeText(needle)));
+}
+
+function scorePersonMatch(person: PersonResult, opts: PeopleSearchOptions): { score: number; matchedSignals: string[] } {
+  const includeTitles = opts.includeTitles ?? [];
+  const includeKeywords = opts.includeKeywords ?? [];
+  const matchText = normalizeText(
+    [person.fullName, person.title, person.department, person.seniority, person.company, person.companyDomain]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const titleText = normalizeText(person.title);
+
+  let score = 0;
+  const matchedSignals: string[] = [];
+
+  if (person.linkedinUrl) {
+    score += 25;
+    matchedSignals.push("has_linkedin");
+  }
+  if (person.email) {
+    score += person.emailVerified ? 20 : 12;
+    matchedSignals.push(person.emailVerified ? "verified_email" : "email_found");
+  }
+  if (normalizeText(person.company) === normalizeText(opts.company)) {
+    score += 20;
+    matchedSignals.push("company_exact");
+  }
+  if (includeTitles.length > 0 && containsAny(titleText, includeTitles)) {
+    score += 30;
+    matchedSignals.push("title_match");
+  }
+  if (includeKeywords.length > 0 && containsAny(matchText, includeKeywords)) {
+    score += 12;
+    matchedSignals.push("keyword_match");
+  }
+  if (opts.department && normalizeText(person.department).includes(normalizeText(opts.department))) {
+    score += 8;
+    matchedSignals.push("department_match");
+  }
+  if (opts.seniority && normalizeText(person.seniority).includes(normalizeText(opts.seniority))) {
+    score += 8;
+    matchedSignals.push("seniority_match");
+  }
+  if (opts.location && normalizeText(matchText).includes(normalizeText(opts.location))) {
+    score += 5;
+    matchedSignals.push("location_match");
+  }
+
+  return { score, matchedSignals };
+}
+
+function passesFilters(person: PersonResult, opts: PeopleSearchOptions): boolean {
+  const text = normalizeText(
+    [person.fullName, person.title, person.department, person.seniority, person.company, person.companyDomain]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const titleText = normalizeText(person.title);
+  const includeTitles = opts.includeTitles ?? [];
+  const excludeTitles = opts.excludeTitles ?? [];
+  const includeKeywords = opts.includeKeywords ?? [];
+  const excludeKeywords = opts.excludeKeywords ?? [];
+
+  if (includeTitles.length > 0 && !containsAny(titleText, includeTitles)) return false;
+  if (!containsNone(titleText, excludeTitles)) return false;
+  if (includeKeywords.length > 0 && !containsAny(text, includeKeywords)) return false;
+  if (!containsNone(text, excludeKeywords)) return false;
+  if (opts.department && !normalizeText(person.department).includes(normalizeText(opts.department))) return false;
+  if (opts.seniority && !normalizeText(person.seniority).includes(normalizeText(opts.seniority))) return false;
+  if (opts.location && !text.includes(normalizeText(opts.location))) return false;
+  return true;
+}
+
+function dedupeKey(person: PersonResult): string {
+  const name = normalizeText(person.fullName);
+  const email = normalizeText(person.email);
+  const linkedin = normalizeText(person.linkedinUrl);
+  const company = normalizeText(person.company);
+  return `${name}|${email}|${linkedin}|${company}`;
+}
+
+function sortRanked(
+  people: RankedPersonResult[],
+  sortMode: PeopleSearchOptions["sortMode"]
+): RankedPersonResult[] {
+  const sorted = [...people];
+  const mode = sortMode ?? "relevance";
+  if (mode === "name_asc") return sorted.sort((a, b) => normalizeText(a.fullName).localeCompare(normalizeText(b.fullName)));
+  if (mode === "name_desc") return sorted.sort((a, b) => normalizeText(b.fullName).localeCompare(normalizeText(a.fullName)));
+  if (mode === "title_asc") return sorted.sort((a, b) => normalizeText(a.title).localeCompare(normalizeText(b.title)));
+  if (mode === "title_desc") return sorted.sort((a, b) => normalizeText(b.title).localeCompare(normalizeText(a.title)));
+  return sorted.sort((a, b) => b.score - a.score);
+}
+
+export async function searchPeopleAtCompanyWorkspace(
+  options: PeopleSearchOptions,
+  onProgress?: WaterfallProgressCallback
+): Promise<PeopleSearchResponse> {
+  const page = Math.max(1, options.page ?? 1);
+  const pageSize = Math.min(100, Math.max(5, options.pageSize ?? 25));
+  const maxResults = Math.min(300, Math.max(pageSize, options.maxResults ?? 80));
+  const domain = options.companyDomain ?? (await resolveCompanyDomain(options.company)) ?? undefined;
+  const diagnostics: ProviderSearchDiagnostic[] = [];
+  const rankedMap = new Map<string, RankedPersonResult>();
+
+  for (const providerName of SEARCH_WATERFALL) {
+    const provider = PROVIDERS[providerName];
+    if (!provider) continue;
+    const available = PROVIDER_ENV_CHECKS[providerName]?.() ?? true;
+    if (!available) {
+      diagnostics.push({
+        provider: providerName,
+        available,
+        attempted: false,
+        status: "skipped",
+        resultCount: 0,
+      });
+      continue;
+    }
+
+    const start = Date.now();
+    try {
+      const results = await provider.searchPeople({
+        company: options.company,
+        companyDomain: domain,
+        titleKeywords: options.includeTitles,
+        department: options.department,
+        maxResults,
+      });
+      const responseMs = Date.now() - start;
+      let acceptedCount = 0;
+
+      for (const person of results) {
+        if (!passesFilters(person, options)) continue;
+        acceptedCount++;
+        const key = dedupeKey(person);
+        const scored = scorePersonMatch(person, options);
+        const existing = rankedMap.get(key);
+        if (existing) {
+          existing.score = Math.max(existing.score, scored.score);
+          existing.matchedSignals = [...new Set([...existing.matchedSignals, ...scored.matchedSignals])];
+          existing.sources = [...new Set([...existing.sources, providerName])];
+        } else {
+          rankedMap.set(key, {
+            ...person,
+            score: scored.score,
+            matchedSignals: scored.matchedSignals,
+            sources: [providerName],
+          });
+        }
+      }
+
+      diagnostics.push({
+        provider: providerName,
+        available,
+        attempted: true,
+        status: acceptedCount > 0 ? "hit" : "miss",
+        resultCount: acceptedCount,
+        responseMs,
+      });
+
+      onProgress?.({
+        provider: providerName,
+        field: "search",
+        status: acceptedCount > 0 ? "hit" : "miss",
+        responseMs,
+        result: acceptedCount > 0 ? `${acceptedCount} matched people` : undefined,
+      });
+    } catch (err) {
+      const responseMs = Date.now() - start;
+      diagnostics.push({
+        provider: providerName,
+        available,
+        attempted: true,
+        status: "error",
+        resultCount: 0,
+        responseMs,
+        error: String(err),
+      });
+      onProgress?.({
+        provider: providerName,
+        field: "search",
+        status: "error",
+        responseMs,
+        error: String(err),
+      });
+    }
+  }
+
+  const all = sortRanked([...rankedMap.values()], options.sortMode);
+  const total = all.length;
+  const startIdx = (page - 1) * pageSize;
+  const results = all.slice(startIdx, startIdx + pageSize);
+
+  return {
+    results,
+    total,
+    page,
+    pageSize,
+    providerDiagnostics: diagnostics,
+  };
+}
+
 export async function searchPeopleAtCompany(
   company: string,
   titleKeywords: string[],
   maxResults: number = 10,
   onProgress?: WaterfallProgressCallback
 ): Promise<PersonResult[]> {
-  const domain = await resolveCompanyDomain(company);
-  const allResults: PersonResult[] = [];
-  const seen = new Set<string>();
-
-  for (const providerName of SEARCH_WATERFALL) {
-    const provider = PROVIDERS[providerName];
-    if (!provider) continue;
-
-    const start = Date.now();
-    try {
-      const results = await provider.searchPeople({
-        company,
-        companyDomain: domain ?? undefined,
-        titleKeywords,
-        maxResults,
-      });
-
-      const responseMs = Date.now() - start;
-
-      if (results.length > 0) {
-        // Deduplicate by name + email
-        for (const r of results) {
-          const key = `${r.fullName?.toLowerCase()}-${r.email ?? r.linkedinUrl ?? ""}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            allResults.push(r);
-          }
-        }
-
-        onProgress?.({
-          provider: providerName,
-          field: "search",
-          status: "hit",
-          responseMs,
-          result: `${results.length} people found`,
-        });
-
-        // Stop once we have enough results
-        if (allResults.length >= maxResults) break;
-      } else {
-        onProgress?.({
-          provider: providerName,
-          field: "search",
-          status: "miss",
-          responseMs,
-        });
-      }
-    } catch (err) {
-      onProgress?.({
-        provider: providerName,
-        field: "search",
-        status: "error",
-        responseMs: Date.now() - start,
-        error: String(err),
-      });
-    }
-  }
-
-  return allResults.slice(0, maxResults);
+  const response = await searchPeopleAtCompanyWorkspace(
+    {
+      company,
+      includeTitles: titleKeywords,
+      maxResults,
+      page: 1,
+      pageSize: maxResults,
+      sortMode: "relevance",
+    },
+    onProgress
+  );
+  return response.results.slice(0, maxResults);
 }
 
 export async function runEnrichmentWaterfall(
