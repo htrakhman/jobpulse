@@ -18,6 +18,7 @@ interface SyncButtonProps {
 
 export function SyncButton({ selectedWindow, scannedWindow }: SyncButtonProps) {
   const [syncing, setSyncing] = useState(false);
+  const [syncMode, setSyncMode] = useState<"window" | "full">("window");
   const [result, setResult] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
@@ -30,22 +31,35 @@ export function SyncButton({ selectedWindow, scannedWindow }: SyncButtonProps) {
     router.push(`${pathname}?${params.toString()}`);
   }
 
-  async function handleSync() {
+  async function handleSync(mode: "window" | "full") {
     setSyncing(true);
+    setSyncMode(mode);
     setResult(null);
     try {
+      const fullRescan = mode === "full";
       const res = await fetch("/api/gmail/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ daysBack: selectedWindow }),
+        body: JSON.stringify({
+          daysBack: fullRescan ? undefined : selectedWindow,
+          fullRescan,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        setResult(
-          `Scanned last ${data.daysBack} days: ${data.applications} application${
-            data.applications !== 1 ? "s" : ""
-          }`
-        );
+        if (data.fullRescan) {
+          setResult(
+            `Full inbox rescan complete: ${data.applications} application${
+              data.applications !== 1 ? "s" : ""
+            } processed`
+          );
+        } else {
+          setResult(
+            `Scanned last ${data.daysBack} days: ${data.applications} application${
+              data.applications !== 1 ? "s" : ""
+            }`
+          );
+        }
         router.refresh();
       } else {
         setResult("Sync failed");
@@ -58,7 +72,27 @@ export function SyncButton({ selectedWindow, scannedWindow }: SyncButtonProps) {
   }
 
   return (
-    <div className="flex items-center gap-3">
+    <>
+      {syncing && (
+        <div className="fixed inset-0 z-[100] bg-gray-900/35 backdrop-blur-[1px] flex items-center justify-center">
+          <div className="rounded-xl bg-white px-6 py-5 shadow-xl border border-gray-200 min-w-[300px]">
+            <div className="flex items-center gap-3">
+              <span className="inline-block w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
+              <div>
+                <p className="text-sm font-semibold text-gray-900">
+                  {syncMode === "full" ? "Rescanning your whole inbox..." : "Refreshing dashboard data..."}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {syncMode === "full"
+                    ? "This may take a few minutes for large mailboxes."
+                    : "Pulling latest emails and updating metrics."}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="flex items-center gap-3">
       {result && (
         <span className="text-sm text-gray-500 hidden md:inline">{result}</span>
       )}
@@ -79,7 +113,7 @@ export function SyncButton({ selectedWindow, scannedWindow }: SyncButtonProps) {
       </label>
       {needsRescan && (
         <Button
-          onClick={handleSync}
+          onClick={() => handleSync("window")}
           disabled={syncing}
           variant="outline"
           size="sm"
@@ -88,16 +122,25 @@ export function SyncButton({ selectedWindow, scannedWindow }: SyncButtonProps) {
           {syncing ? (
             <span className="flex items-center gap-2">
               <span className="inline-block w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-              Syncing…
+              Syncing...
             </span>
           ) : (
             `Rescan to ${selectedWindow}d`
           )}
         </Button>
       )}
+      <Button
+        onClick={() => handleSync("full")}
+        disabled={syncing}
+        size="sm"
+        className="bg-gray-900 hover:bg-gray-700 text-white"
+      >
+        {syncing && syncMode === "full" ? "Rescanning..." : "Refresh whole inbox"}
+      </Button>
       <span className="hidden xl:inline text-xs text-gray-400">
         Scanned so far: {scannedWindow}d
       </span>
-    </div>
+      </div>
+    </>
   );
 }
