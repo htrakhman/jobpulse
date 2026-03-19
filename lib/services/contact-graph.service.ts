@@ -45,6 +45,11 @@ interface PreparedContact {
   companyDomain: string | null;
 }
 
+interface ViewerIdentity {
+  emails: Set<string>;
+  nameTokens: Set<string>;
+}
+
 const TITLE_KEYWORDS = [
   "head of",
   "vp ",
@@ -83,12 +88,41 @@ function extractDomain(email: string | null): string | null {
   return normalized.split("@")[1] ?? null;
 }
 
+function extractNameTokensFromEmail(email: string | null): string[] {
+  const normalized = normalizeEmail(email);
+  if (!normalized || !normalized.includes("@")) return [];
+  const local = normalized.split("@")[0] ?? "";
+  return local
+    .split(/[._\-+]/)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 2);
+}
+
 function isLikelyPersonEmail(email: string | null): boolean {
   const normalized = normalizeEmail(email);
   if (!normalized) return false;
   const local = normalized.split("@")[0] ?? "";
   if (!local) return false;
   return !/(no-?reply|donotreply|notifications|alerts|jobs|careers|support)/i.test(local);
+}
+
+function extractEmailsFromText(text: string): string[] {
+  const matches = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/g) ?? [];
+  return [...new Set(matches.map((value) => normalizeEmail(value)))];
+}
+
+function isViewerIdentityMessage(
+  message: GraphMessage,
+  viewerIdentity: ViewerIdentity
+): boolean {
+  const email = normalizeEmail(message.fromEmail);
+  if (email && viewerIdentity.emails.has(email)) return true;
+  const normalizedName = normalizeName(message.fromName);
+  if (!normalizedName) return false;
+  const parts = normalizedName.split(" ").filter(Boolean);
+  if (parts.length === 0) return false;
+  const overlap = parts.filter((part) => viewerIdentity.nameTokens.has(part)).length;
+  return overlap >= Math.min(2, parts.length);
 }
 
 function scoreRecency(receivedAt: Date): number {
@@ -130,6 +164,18 @@ function guessTitleFromText(message: GraphMessage): TitleCandidate[] {
       confidence: 0.62 + scoreRecency(message.receivedAt),
       sourceMessageId: message.id,
       snippet: introMatch[0],
+    });
+  }
+
+  const linkedinSnippetMatch = text.match(
+    /\b[A-Z][A-Za-z .'-]{1,60}\s*[-|]\s*([A-Za-z][A-Za-z/&,\-\s]{2,80})\s*[-|]\s*[A-Za-z][A-Za-z .'-]{1,80}\s*\|?\s*LinkedIn/i
+  );
+  if (linkedinSnippetMatch?.[1]) {
+    candidates.push({
+      title: linkedinSnippetMatch[1].trim(),
+      confidence: 0.58 + scoreRecency(message.receivedAt),
+      sourceMessageId: message.id,
+      snippet: linkedinSnippetMatch[0],
     });
   }
 
@@ -240,8 +286,11 @@ function mergeClusterForMessage(
   clusters: Map<string, ContactCluster>,
   emailToCluster: Map<string, string>,
   nameDomainToCluster: Map<string, string>,
-  message: GraphMessage
+  message: GraphMessage,
+  companyDomains: Set<string>,
+  viewerIdentity: ViewerIdentity
 ): ContactCluster | null {
+  if (isViewerIdentityMessage(message, viewerIdentity)) return null;
   const email = normalizeEmail(message.fromEmail);
   if (!email || !isLikelyPersonEmail(email)) return null;
   const domain = extractDomain(email);
@@ -273,6 +322,20 @@ function mergeClusterForMessage(
   cluster.messages.push(message);
   cluster.titleCandidates.push(...guessTitleFromText(message));
 
+  const bodyEmails = extractEmailsFromText(
+    `${message.subject ?? ""}\n${message.snippet ?? ""}\n${message.bodyText ?? ""}`
+  );
+  for (const discoveredEmail of bodyEmails) {
+    if (!isLikelyPersonEmail(discoveredEmail)) continue;
+    if (viewerIdentity.emails.has(discoveredEmail)) continue;
+    const discoveredDomain = extractDomain(discoveredEmail);
+    if (!discoveredDomain) continue;
+    // Keep plausible alternates: same sender domain or likely company-work domain.
+    if (discoveredDomain !== domain && !companyDomains.has(discoveredDomain)) continue;
+    if (discoveredEmail === email) continue;
+    cluster.emails.set(discoveredEmail, (cluster.emails.get(discoveredEmail) ?? 0) + 1);
+  }
+
   emailToCluster.set(email, clusterKey);
   if (nameDomainKey) nameDomainToCluster.set(nameDomainKey, clusterKey);
   return cluster;
@@ -282,15 +345,40 @@ async function loadGraphMessages(userId: string, applicationId: string): Promise
   company: string;
   companyDomains: Set<string>;
   messages: GraphMessage[];
+  viewerIdentity: ViewerIdentity;
 }> {
   const prisma = requirePrisma();
-  const application = await prisma.application.findFirst({
-    where: { id: applicationId, userId },
-    select: { id: true, company: true, threadIds: true },
-  });
+  const [application, user, connectedAccount] = await Promise.all([
+    prisma.application.findFirst({
+      where: { id: applicationId, userId },
+      select: { id: true, company: true, threadIds: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    }),
+    prisma.connectedAccount.findUnique({
+      where: { userId },
+      select: { email: true },
+    }),
+  ]);
   if (!application) {
-    return { company: "", companyDomains: new Set(), messages: [] };
+    return {
+      company: "",
+      companyDomains: new Set(),
+      messages: [],
+      viewerIdentity: { emails: new Set(), nameTokens: new Set() },
+    };
   }
+
+  const viewerEmails = new Set(
+    [user?.email, connectedAccount?.email]
+      .map((value) => normalizeEmail(value ?? null))
+      .filter(Boolean)
+  );
+  const viewerNameTokens = new Set(
+    [...viewerEmails].flatMap((email) => extractNameTokensFromEmail(email))
+  );
 
   const seedMessages = await prisma.emailMessage.findMany({
     where: {
@@ -350,7 +438,15 @@ async function loadGraphMessages(userId: string, applicationId: string): Promise
     },
   });
 
-  return { company: application.company, companyDomains, messages: relatedMessages };
+  return {
+    company: application.company,
+    companyDomains,
+    messages: relatedMessages,
+    viewerIdentity: {
+      emails: viewerEmails,
+      nameTokens: viewerNameTokens,
+    },
+  };
 }
 
 export interface ApplicationContactSummary {
@@ -368,7 +464,10 @@ export async function recomputeContactGraphForApplication(
   applicationId: string
 ): Promise<{ contactsCreated: number }> {
   const prisma = requirePrisma();
-  const { company, companyDomains, messages } = await loadGraphMessages(userId, applicationId);
+  const { company, companyDomains, messages, viewerIdentity } = await loadGraphMessages(
+    userId,
+    applicationId
+  );
   if (!company) return { contactsCreated: 0 };
 
   const clusters = new Map<string, ContactCluster>();
@@ -376,7 +475,14 @@ export async function recomputeContactGraphForApplication(
   const nameDomainToCluster = new Map<string, string>();
 
   for (const message of messages) {
-    mergeClusterForMessage(clusters, emailToCluster, nameDomainToCluster, message);
+    mergeClusterForMessage(
+      clusters,
+      emailToCluster,
+      nameDomainToCluster,
+      message,
+      companyDomains,
+      viewerIdentity
+    );
   }
 
   const prepared: PreparedContact[] = [];

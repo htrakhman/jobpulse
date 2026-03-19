@@ -252,7 +252,7 @@ npm run dev`}
       recruiter: app.recruiter,
       interviewRound: interviewRoundByAppId[app.id]?.round ?? 0,
       interviewRoundLabel: interviewRoundByAppId[app.id]?.label ?? null,
-      contactPerson: primaryContact?.fullName ?? app.recruiter?.name ?? null,
+      contactPerson: primaryContact?.fullName ?? null,
       contactPosition: primaryContact?.inferredTitle ?? null,
       contactWebProfileUrl: primaryContact?.webProfileUrl ?? null,
       additionalEmails,
