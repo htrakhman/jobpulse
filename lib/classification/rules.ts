@@ -35,7 +35,6 @@ function bodyContainsAll(body: string, ...terms: string[]): boolean {
 
 function detectInterviewInviteStage(ctx: RuleContext): ApplicationStage | null {
   const combined = `${ctx.subject}\n${ctx.body}`;
-  const combinedLower = lower(combined);
   const hasInterviewContext =
     /(interview|phone screen|screening call|hiring manager|panel interview|onsite|on-site)/i.test(
       combined
@@ -46,11 +45,22 @@ function detectInterviewInviteStage(ctx: RuleContext): ApplicationStage | null {
     /(invitation:|calendar invite|google calendar|accepted:|declined:|proposed new time|join with google meet|zoom\.us|microsoft teams|teams\.microsoft)/i.test(
       combined
     ) ||
-    subjectContains(ctx.subject, "interview scheduled", "invitation", "calendar");
+    subjectContains(ctx.subject, "interview scheduled", "invitation", "calendar", "confirmed");
+  const hasConfirmedSignal =
+    hasInviteSignals ||
+    bodyContains(
+      ctx.body,
+      "your interview is scheduled",
+      "interview confirmed",
+      "calendar invite attached",
+      "invite attached"
+    );
 
   const eventDate = extractLikelyEventDate(combined, ctx.receivedAt);
   if (!hasInviteSignals && !eventDate) return null;
   if (!eventDate) return "Scheduling";
+  // Do not advance to Interviewing unless we have explicit confirmation/invite signals.
+  if (!hasConfirmedSignal) return "Scheduling";
   return eventDate.getTime() <= Date.now() ? "Interviewing" : "Scheduling";
 }
 
@@ -227,7 +237,7 @@ const RULES: Rule[] = [
   {
     name: "interview_request_availability_subject",
     emailType: "interview_request",
-    stage: "Interviewing",
+    stage: "Scheduling",
     match: ({ subject, body }) =>
       subjectContains(subject, "availability request", "interview availability") &&
       bodyContains(body, "interview"),
@@ -235,7 +245,7 @@ const RULES: Rule[] = [
   {
     name: "interview_request_availability_body",
     emailType: "interview_request",
-    stage: "Interviewing",
+    stage: "Scheduling",
     match: ({ body }) =>
       bodyContains(
         body,
@@ -252,7 +262,7 @@ const RULES: Rule[] = [
   {
     name: "interview_next_steps_subject",
     emailType: "interview_request",
-    stage: "Interviewing",
+    stage: "Scheduling",
     match: ({ subject, body }) =>
       subjectContains(subject, "next steps", "next step") &&
       (bodyContains(body, "interview", "availability", "schedule") ||
@@ -278,7 +288,7 @@ const RULES: Rule[] = [
   {
     name: "interview_request_subject",
     emailType: "interview_request",
-    stage: "Interviewing",
+    stage: "Scheduling",
     match: ({ subject }) =>
       subjectContains(
         subject,
@@ -291,7 +301,7 @@ const RULES: Rule[] = [
   {
     name: "interview_request_body_invite",
     emailType: "interview_request",
-    stage: "Interviewing",
+    stage: "Scheduling",
     match: ({ body }) =>
       bodyContains(
         body,
@@ -308,7 +318,7 @@ const RULES: Rule[] = [
   {
     name: "interview_request_hiring_manager",
     emailType: "interview_request",
-    stage: "Interviewing",
+    stage: "Scheduling",
     match: ({ body }) =>
       bodyContainsAll(body, "hiring manager", "interview") ||
       bodyContainsAll(body, "phone screen", "schedule"),

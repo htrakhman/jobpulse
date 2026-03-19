@@ -310,6 +310,15 @@ export async function getApplicationsForUser(
     },
     include: {
       recruiter: true,
+      emails: {
+        select: {
+          id: true,
+          threadId: true,
+          receivedAt: true,
+        },
+        orderBy: { receivedAt: "desc" },
+        take: 1,
+      },
       contacts: {
         include: {
           emails: {
@@ -553,8 +562,15 @@ function detectInviteDerivedStage(
   if (!hasInterviewLanguage(text)) return null;
   const inviteDate = extractLikelyInviteDate(text, receivedAt);
   const hasInvite = detectInviteSignals(text);
+  const hasConfirmedSignal =
+    hasInvite ||
+    /(interview confirmed|your interview is scheduled|calendar invite attached|invite attached)/i.test(
+      text
+    );
   if (!hasInvite && !inviteDate) return null;
   if (!inviteDate) return "Scheduling";
+  // Keep in Scheduling when we only have "next steps"/availability dates without explicit confirmation.
+  if (!hasConfirmedSignal) return "Scheduling";
   return inviteDate.getTime() <= Date.now() ? "Interviewing" : "Scheduling";
 }
 

@@ -264,6 +264,7 @@ npm run dev`}
       contactPerson: primaryContact?.fullName ?? null,
       contactPosition: primaryContact?.inferredTitle ?? null,
       contactWebProfileUrl: primaryContact?.webProfileUrl ?? null,
+      latestThreadId: app.emails[0]?.threadId ?? null,
       additionalEmails,
       events: app.events.map((e) => ({
         summary: e.summary,

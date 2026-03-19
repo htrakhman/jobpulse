@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import {
   Table,
@@ -27,6 +28,7 @@ interface Application {
   contactPerson: string | null;
   contactPosition: string | null;
   contactWebProfileUrl: string | null;
+  latestThreadId: string | null;
   additionalEmails: string[];
   recruiter: {
     name: string | null;
@@ -176,6 +178,7 @@ function pickPreferredCompanyRow(current: Application, candidate: Application): 
 }
 
 export function ApplicationTable({ applications, windowDays }: ApplicationTableProps) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
@@ -477,11 +480,19 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
             <TableRow
               key={app.id}
               className="hover:bg-gray-50 cursor-pointer transition-colors"
+              onClick={() => {
+                if (app.latestThreadId) {
+                  window.open(`https://mail.google.com/mail/u/0/#all/${app.latestThreadId}`, "_blank");
+                  return;
+                }
+                router.push(`/applications/${app.id}`);
+              }}
             >
               <TableCell className="font-medium">
                 <Link
                   href={`/applications/${app.id}`}
                   className="hover:text-blue-600 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center gap-2">
                     <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600 uppercase shrink-0">
@@ -530,7 +541,11 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
                 )}
               </TableCell>
               <TableCell className="text-gray-500 text-sm">
-                <Link href={`/applications/${app.id}`} className="text-blue-600 hover:underline">
+                <Link
+                  href={`/applications/${app.id}`}
+                  className="text-blue-600 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   Find people
                 </Link>
               </TableCell>
