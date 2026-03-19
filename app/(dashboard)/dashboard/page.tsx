@@ -316,7 +316,7 @@ npm run dev`}
           <div>
             <p className="text-sm font-semibold text-blue-900">People Enrichment (Clay-style)</p>
             <p className="text-xs text-blue-700 mt-0.5">
-              Open any application and click <strong>Find Contacts</strong> to search and enrich people.
+              Open any application and click <strong>Find People</strong> to search and enrich people.
             </p>
           </div>
           <Link

@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
         resultCount: contacts.length,
         totalCount: searchResult.total,
         durationMs,
-        providerSummary: searchResult.providerDiagnostics,
+        providerSummary: searchResult.providerDiagnostics as never,
       },
     });
 
@@ -174,8 +174,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const contactsWithRanking = contacts.map((contact, idx) => ({
+      ...contact,
+      titleScore: searchResult.results[idx]?.score ?? 0,
+      sources: searchResult.results[idx]?.sources ?? [],
+      matchedSignals: searchResult.results[idx]?.matchedSignals ?? [],
+    }));
+
     return NextResponse.json({
-      contacts,
+      contacts: contactsWithRanking,
       total: searchResult.total,
       page: searchResult.page,
       pageSize: searchResult.pageSize,

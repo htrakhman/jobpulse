@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       userId,
       applicationId: body.applicationId ?? undefined,
       name,
-      filterPayload: body.filterPayload ?? {},
+      filterPayload: (body.filterPayload ?? {}) as never,
       sortMode: body.sortMode ?? "relevance",
       maxResults: Math.min(300, Math.max(10, body.maxResults ?? 80)),
       pageSize: Math.min(100, Math.max(5, body.pageSize ?? 25)),

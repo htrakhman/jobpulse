@@ -90,7 +90,7 @@ export function ApplicationDetailClient({ application, events }: ApplicationDeta
               onClick={() => setSearchOpen(true)}
               className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 h-7"
             >
-              Find Contacts
+              Find People
             </Button>
           </div>
         </div>

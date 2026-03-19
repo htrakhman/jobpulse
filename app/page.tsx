@@ -104,7 +104,7 @@ export default async function LandingPage() {
           {[
             "1. Connect Gmail and auto-import your application history.",
             "2. Track every stage update from incoming email threads.",
-            "3. Open any application and click Find Contacts.",
+            "3. Open any application and click Find People.",
             "4. Filter by titles like Head of Recruiting, CFO, VP Engineering.",
             "5. Run waterfall enrichment for work email and LinkedIn.",
             "6. Send personalized outreach via email or LinkedIn.",

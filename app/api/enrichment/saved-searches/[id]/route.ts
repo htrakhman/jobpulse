@@ -49,7 +49,9 @@ export async function PATCH(
     where: { id },
     data: {
       ...(typeof body.name === "string" ? { name: body.name.trim() || "Untitled search" } : {}),
-      ...(body.filterPayload ? { filterPayload: body.filterPayload } : {}),
+      ...(body.filterPayload
+        ? { filterPayload: body.filterPayload as never }
+        : {}),
       ...(body.sortMode ? { sortMode: body.sortMode } : {}),
       ...(typeof body.maxResults === "number"
         ? { maxResults: Math.min(300, Math.max(10, body.maxResults)) }
