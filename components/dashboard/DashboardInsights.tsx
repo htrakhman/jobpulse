@@ -315,7 +315,12 @@ export function DashboardInsights({
         </div>
       </div>
 
-      <div className="border border-gray-200 rounded-xl bg-white p-4">
+      <div className="lg:col-span-2 grid gap-4 md:grid-cols-2">
+        <DonutChart title="Applications by Industry" data={industryData} />
+        <DonutChart title="Applications by Company Size" data={companySizeData} />
+      </div>
+
+      <div className="border border-gray-200 rounded-xl bg-white p-4 lg:row-span-2">
         <p className="text-sm font-semibold text-gray-800 mb-3">Interview Progression</p>
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
@@ -344,11 +349,6 @@ export function DashboardInsights({
         <p className="text-[11px] text-gray-400 mt-3">
           Derived from interview email chains sent from company domains.
         </p>
-      </div>
-
-      <div className="lg:col-span-2 grid gap-4 md:grid-cols-2">
-        <DonutChart title="Applications by Industry" data={industryData} />
-        <DonutChart title="Applications by Company Size" data={companySizeData} />
       </div>
 
       <div className="lg:col-span-3 border border-gray-200 rounded-xl bg-white p-4">
