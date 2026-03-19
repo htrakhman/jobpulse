@@ -257,6 +257,16 @@ export async function getApplicationsForUser(
     },
     include: {
       recruiter: true,
+      contacts: {
+        include: {
+          emails: {
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            take: 4,
+          },
+        },
+        orderBy: [{ confidence: "desc" }, { updatedAt: "desc" }],
+        take: 3,
+      },
       events: {
         orderBy: { occurredAt: "desc" },
         take: 1,
@@ -275,6 +285,19 @@ export async function getApplicationById(userId: string, applicationId: string) 
     where: { id: applicationId, userId },
     include: {
       recruiter: true,
+      contacts: {
+        include: {
+          emails: {
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            take: 6,
+          },
+          evidence: {
+            orderBy: { createdAt: "desc" },
+            take: 5,
+          },
+        },
+        orderBy: [{ confidence: "desc" }, { updatedAt: "desc" }],
+      },
       events: {
         include: {
           email: {

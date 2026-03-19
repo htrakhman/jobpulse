@@ -34,5 +34,24 @@ export async function GET(request: NextRequest) {
     includeStats ? getDashboardStats(userId) : null,
   ]);
 
-  return NextResponse.json({ applications, stats });
+  const applicationRows = applications.map((app) => {
+    const primaryContact = app.contacts[0];
+    return {
+      ...app,
+      contactSummary: primaryContact
+        ? {
+            contactPerson: primaryContact.fullName,
+            inferredPosition: primaryContact.inferredTitle,
+            additionalEmails: primaryContact.emails
+              .filter((email) => !email.isPrimary)
+              .map((email) => email.email)
+              .slice(0, 3),
+            webProfileUrl: primaryContact.webProfileUrl,
+            confidence: primaryContact.confidence,
+          }
+        : null,
+    };
+  });
+
+  return NextResponse.json({ applications: applicationRows, stats });
 }

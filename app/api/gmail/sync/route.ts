@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncInbox } from "@/lib/gmail/sync";
 import { reconcileInterviewInvites } from "@/lib/services/application.service";
+import { recomputeContactGraphForUser } from "@/lib/services/contact-graph.service";
 import { generateFollowUpSuggestions } from "@/lib/services/followup.service";
 
 const ALLOWED_WINDOWS = new Set([30, 90, 180, 365]);
@@ -36,6 +37,14 @@ export async function POST(request: Request) {
     const result = await syncInbox(ownerUserId, { daysBack });
     const inviteReconciled = await reconcileInterviewInvites(ownerUserId, daysBack);
     await generateFollowUpSuggestions(ownerUserId);
+    setTimeout(() => {
+      void recomputeContactGraphForUser(ownerUserId, {
+        daysBack,
+        limit: 80,
+      }).catch((recomputeErr) =>
+        console.error("[api/gmail/sync] contact graph recompute failed:", recomputeErr)
+      );
+    }, 0);
 
     return NextResponse.json({ success: true, daysBack, inviteReconciled, ...result });
   } catch (err) {

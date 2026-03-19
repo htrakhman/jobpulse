@@ -35,6 +35,11 @@ interface Contact {
   titleScore?: number;
   sources?: string[];
   matchedSignals?: string[];
+  contactPerson?: string | null;
+  inferredPosition?: string | null;
+  additionalEmails?: string[];
+  webProfileUrl?: string | null;
+  mailboxConfidence?: number;
 }
 
 interface ProviderDiagnostic {
@@ -625,6 +630,10 @@ export function ContactSearchPanel({
                   <tr className="text-left text-gray-500 text-xs uppercase">
                     <th className="px-4 py-2 w-10">#</th>
                     <th className="px-4 py-2">Name</th>
+                    <th className="px-4 py-2">Contact Person</th>
+                    <th className="px-4 py-2">Position</th>
+                    <th className="px-4 py-2">Additional Emails</th>
+                    <th className="px-4 py-2">Web</th>
                     <th className="px-4 py-2">Title</th>
                     <th className="px-4 py-2">Company</th>
                     <th className="px-4 py-2">LinkedIn</th>
@@ -637,14 +646,14 @@ export function ContactSearchPanel({
                 <tbody>
                   {!searched && (
                     <tr>
-                      <td colSpan={9} className="px-4 py-14 text-center text-gray-400">
+                      <td colSpan={13} className="px-4 py-14 text-center text-gray-400">
                         Configure filters and run search.
                       </td>
                     </tr>
                   )}
                   {searched && contacts.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="px-4 py-14 text-center text-gray-400">
+                      <td colSpan={13} className="px-4 py-14 text-center text-gray-400">
                         No results. Try broadening filters or enabling more provider keys.
                       </td>
                     </tr>
@@ -668,6 +677,35 @@ export function ContactSearchPanel({
                           <div className="text-[11px] text-gray-500 mt-0.5">
                             {contact.matchedSignals.slice(0, 3).join(", ")}
                           </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-gray-700">
+                        {contact.contactPerson ?? <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="px-4 py-2 text-gray-700">
+                        {contact.inferredPosition ?? <span className="text-gray-400">Not inferred yet</span>}
+                      </td>
+                      <td className="px-4 py-2 text-gray-700">
+                        {contact.additionalEmails && contact.additionalEmails.length > 0 ? (
+                          <span className="truncate max-w-[220px] block">
+                            {contact.additionalEmails.join(", ")}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">No additional emails</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-gray-700">
+                        {contact.webProfileUrl ? (
+                          <a
+                            href={contact.webProfileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline"
+                          >
+                            Search
+                          </a>
+                        ) : (
+                          <span className="text-gray-400">—</span>
                         )}
                       </td>
                       <td className="px-4 py-2 text-gray-700">{contact.title ?? "—"}</td>

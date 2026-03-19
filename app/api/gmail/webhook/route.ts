@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePrisma } from "@/lib/prisma";
 import { syncFromHistory } from "@/lib/gmail/sync";
+import { recomputeContactGraphForUser } from "@/lib/services/contact-graph.service";
 import { generateFollowUpSuggestions } from "@/lib/services/followup.service";
 
 // Google Pub/Sub pushes a base64-encoded JSON payload
@@ -43,7 +44,12 @@ export async function POST(request: NextRequest) {
 
     // Process new emails asynchronously (don't block the response)
     syncFromHistory(account.userId, historyId)
-      .then(() => generateFollowUpSuggestions(account.userId))
+      .then(() =>
+        Promise.all([
+          generateFollowUpSuggestions(account.userId),
+          recomputeContactGraphForUser(account.userId, { daysBack: 120, limit: 60 }),
+        ])
+      )
       .catch((err) => console.error("[webhook] Sync error:", err));
 
     // Acknowledge immediately (Pub/Sub requires < 10s response)

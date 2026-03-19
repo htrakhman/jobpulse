@@ -39,6 +39,7 @@ model User {
   initialScanRangeDays   Int?
   connectedAccount ConnectedAccount?
   applications     Application[]
+  contacts         ApplicationContact[]
   followUps        FollowUpSuggestion[]
   savedSearches    SavedSearch[]
   searchRuns       SearchRun[]
@@ -73,6 +74,7 @@ model EmailMessage {
   applicationId   String?
   application     Application? @relation(fields: [applicationId], references: [id])
   events          ApplicationEvent[]
+  contactEvidence ContactEvidence[]
 
   @@index([userId])
   @@index([threadId])
@@ -94,6 +96,7 @@ model Application {
   emails          EmailMessage[]
   events          ApplicationEvent[]
   followUps       FollowUpSuggestion[]
+  contacts        ApplicationContact[]
   enrichedContacts EnrichedContact[]
   outreachMessages OutreachMessage[]
   savedSearches    SavedSearch[]
@@ -149,6 +152,64 @@ model SearchRun {
   @@index([userId, createdAt])
   @@index([savedSearchId])
   @@index([applicationId])
+}
+
+model ApplicationContact {
+  id             String               @id @default(cuid())
+  applicationId  String
+  application    Application          @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyDomain  String?
+  primaryEmail   String?
+  fullName       String?
+  inferredTitle  String?
+  webProfileUrl  String?
+  confidence     Float                @default(0)
+  lastResolvedAt DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  emails         ApplicationContactEmail[]
+  evidence       ContactEvidence[]
+
+  @@index([applicationId])
+  @@index([userId, applicationId])
+  @@index([primaryEmail])
+  @@index([companyDomain])
+}
+
+model ApplicationContactEmail {
+  id        String           @id @default(cuid())
+  contactId String
+  contact   ApplicationContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  email     String
+  emailType ContactEmailType @default(unknown)
+  source    String?
+  isPrimary Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([contactId, email])
+  @@index([email])
+}
+
+model ContactEvidence {
+  id             String             @id @default(cuid())
+  contactId      String
+  contact        ApplicationContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  emailMessageId String?
+  emailMessage   EmailMessage?      @relation(fields: [emailMessageId], references: [id], onDelete: SetNull)
+  threadId       String?
+  sourceEmail    String?
+  snippet        String?
+  extractedTitle String?
+  confidence     Float              @default(0)
+  createdAt      DateTime           @default(now())
+
+  @@index([contactId])
+  @@index([emailMessageId])
+  @@index([threadId])
 }
 
 model ApplicationEvent {
@@ -230,6 +291,14 @@ enum EnrichmentProvider {
   mixrank
   icypeas
   leadmagic
+}
+
+enum ContactEmailType {
+  primary
+  work
+  alias
+  personal
+  unknown
 }
 
 model EnrichedContact {

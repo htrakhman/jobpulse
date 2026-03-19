@@ -3,6 +3,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePrisma } from "@/lib/prisma";
 import { searchPeopleAtCompanyWorkspace } from "@/lib/enrichment/waterfall";
 import type { PeopleSortMode } from "@/lib/enrichment/types";
+import { getApplicationContactSummaries } from "@/lib/services/contact-graph.service";
+
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function mergeMailboxSummary<T extends { fullName: string | null; email: string | null }>(
+  contacts: T[],
+  summaries: Awaited<ReturnType<typeof getApplicationContactSummaries>>[string] | undefined
+) {
+  const summaryList = summaries ?? [];
+  return contacts.map((contact) => {
+    const email = normalizeText(contact.email);
+    const name = normalizeText(contact.fullName);
+    const matched = summaryList.find((summary) => {
+      if (email && (normalizeText(summary.primaryEmail) === email || summary.additionalEmails.some((x) => normalizeText(x) === email))) {
+        return true;
+      }
+      return !!name && normalizeText(summary.fullName) === name;
+    }) ?? summaryList[0];
+
+    return {
+      ...contact,
+      contactPerson: matched?.fullName ?? null,
+      inferredPosition: matched?.inferredTitle ?? null,
+      additionalEmails: matched?.additionalEmails ?? [],
+      webProfileUrl: matched?.webProfileUrl ?? null,
+      mailboxConfidence: matched?.confidence ?? 0,
+    };
+  });
+}
 
 export async function POST(request: NextRequest) {
   const { userId } = await auth();
@@ -180,9 +211,14 @@ export async function POST(request: NextRequest) {
       sources: searchResult.results[idx]?.sources ?? [],
       matchedSignals: searchResult.results[idx]?.matchedSignals ?? [],
     }));
+    const summaryMap = await getApplicationContactSummaries(userId, [applicationId]);
+    const contactsWithMailbox = mergeMailboxSummary(
+      contactsWithRanking,
+      summaryMap[applicationId]
+    );
 
     return NextResponse.json({
-      contacts: contactsWithRanking,
+      contacts: contactsWithMailbox,
       total: searchResult.total,
       page: searchResult.page,
       pageSize: searchResult.pageSize,
@@ -218,5 +254,8 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: "asc" },
   });
 
-  return NextResponse.json({ contacts });
+  const summaryMap = await getApplicationContactSummaries(userId, [applicationId]);
+  const contactsWithMailbox = mergeMailboxSummary(contacts, summaryMap[applicationId]);
+
+  return NextResponse.json({ contacts: contactsWithMailbox });
 }

@@ -24,6 +24,10 @@ interface Application {
   interviewRound: 0 | 1 | 2 | 3;
   interviewRoundLabel: string | null;
   atsProvider: string | null;
+  contactPerson: string | null;
+  contactPosition: string | null;
+  contactWebProfileUrl: string | null;
+  additionalEmails: string[];
   recruiter: {
     name: string | null;
     email: string | null;
@@ -43,6 +47,9 @@ type SortKey =
   | "company"
   | "role"
   | "stage"
+  | "contactPerson"
+  | "contactPosition"
+  | "additionalEmails"
   | "appliedAt"
   | "lastActivityAt"
   | "latestUpdate";
@@ -57,6 +64,7 @@ const STAGE_ORDER: ApplicationStage[] = [
   "Rejected",
   "Closed",
 ];
+const RENDER_REFERENCE_MS = Date.now();
 
 const STAGE_LABELS: Record<ApplicationStage, string> = {
   Applied: "applied",
@@ -83,6 +91,9 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
   const [searchQuery, setSearchQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  const [contactFilter, setContactFilter] = useState("");
+  const [positionFilter, setPositionFilter] = useState("");
+  const [emailFilter, setEmailFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
   const [latestFilter, setLatestFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("lastActivityAt");
@@ -94,11 +105,20 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
       return;
     }
     setSortKey(key);
-    setSortDir(key === "company" || key === "role" || key === "stage" ? "asc" : "desc");
+    setSortDir(
+      key === "company" ||
+        key === "role" ||
+        key === "stage" ||
+        key === "contactPerson" ||
+        key === "contactPosition" ||
+        key === "additionalEmails"
+        ? "asc"
+        : "desc"
+    );
   }
 
   const filteredAndSorted = useMemo(() => {
-    const now = Date.now();
+    const now = RENDER_REFERENCE_MS;
     const windowMs = windowDaysToMs(windowDays);
     const searchTokens = searchQuery
       .toLowerCase()
@@ -115,6 +135,10 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
         app.stage,
         STAGE_LABELS[app.stage],
         app.interviewRoundLabel ?? "",
+        app.contactPerson ?? "",
+        app.contactPosition ?? "",
+        app.additionalEmails.join(" "),
+        app.contactWebProfileUrl ?? "",
         latestSummary,
         app.appliedAt ?? "",
         app.lastActivityAt,
@@ -138,6 +162,24 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
       if (roleFilter && !(app.role ?? "").toLowerCase().includes(roleFilter.toLowerCase())) {
         return false;
       }
+      if (
+        contactFilter &&
+        !(app.contactPerson ?? "").toLowerCase().includes(contactFilter.toLowerCase())
+      ) {
+        return false;
+      }
+      if (
+        positionFilter &&
+        !(app.contactPosition ?? "").toLowerCase().includes(positionFilter.toLowerCase())
+      ) {
+        return false;
+      }
+      if (
+        emailFilter &&
+        !app.additionalEmails.join(" ").toLowerCase().includes(emailFilter.toLowerCase())
+      ) {
+        return false;
+      }
       if (stageFilter && app.stage !== stageFilter) {
         return false;
       }
@@ -155,6 +197,15 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
       if (sortKey === "company") comp = a.company.localeCompare(b.company);
       if (sortKey === "role") comp = (a.role ?? "").localeCompare(b.role ?? "");
       if (sortKey === "stage") comp = STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage);
+      if (sortKey === "contactPerson") {
+        comp = (a.contactPerson ?? "").localeCompare(b.contactPerson ?? "");
+      }
+      if (sortKey === "contactPosition") {
+        comp = (a.contactPosition ?? "").localeCompare(b.contactPosition ?? "");
+      }
+      if (sortKey === "additionalEmails") {
+        comp = a.additionalEmails.join(", ").localeCompare(b.additionalEmails.join(", "));
+      }
       if (sortKey === "appliedAt") comp = toTime(a.appliedAt) - toTime(b.appliedAt);
       if (sortKey === "lastActivityAt") comp = toTime(a.lastActivityAt) - toTime(b.lastActivityAt);
       if (sortKey === "latestUpdate") {
@@ -168,6 +219,9 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
     searchQuery,
     companyFilter,
     roleFilter,
+    contactFilter,
+    positionFilter,
+    emailFilter,
     stageFilter,
     latestFilter,
     windowDays,
@@ -210,6 +264,21 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
             <TableHead className="font-semibold text-gray-700">
               <button onClick={() => toggleSort("stage")} className="hover:text-gray-900">
                 Status
+              </button>
+            </TableHead>
+            <TableHead className="font-semibold text-gray-700">
+              <button onClick={() => toggleSort("contactPerson")} className="hover:text-gray-900">
+                Contact Person
+              </button>
+            </TableHead>
+            <TableHead className="font-semibold text-gray-700">
+              <button onClick={() => toggleSort("contactPosition")} className="hover:text-gray-900">
+                Position
+              </button>
+            </TableHead>
+            <TableHead className="font-semibold text-gray-700">
+              <button onClick={() => toggleSort("additionalEmails")} className="hover:text-gray-900">
+                Additional Emails
               </button>
             </TableHead>
             <TableHead className="font-semibold text-gray-700">People</TableHead>
@@ -263,6 +332,30 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
                 <option value="Closed">Closed</option>
               </select>
             </TableHead>
+            <TableHead>
+              <input
+                value={contactFilter}
+                onChange={(e) => setContactFilter(e.target.value)}
+                placeholder="Filter contact"
+                className="h-8 w-full rounded-md border border-gray-200 px-2 text-xs"
+              />
+            </TableHead>
+            <TableHead>
+              <input
+                value={positionFilter}
+                onChange={(e) => setPositionFilter(e.target.value)}
+                placeholder="Filter position"
+                className="h-8 w-full rounded-md border border-gray-200 px-2 text-xs"
+              />
+            </TableHead>
+            <TableHead>
+              <input
+                value={emailFilter}
+                onChange={(e) => setEmailFilter(e.target.value)}
+                placeholder="Filter additional emails"
+                className="h-8 w-full rounded-md border border-gray-200 px-2 text-xs"
+              />
+            </TableHead>
             <TableHead className="text-xs text-gray-400">Open app detail</TableHead>
             <TableHead className="text-xs text-gray-400">Global window</TableHead>
             <TableHead className="text-xs text-gray-400">Global window</TableHead>
@@ -310,6 +403,29 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
                   )}
                 </div>
               </TableCell>
+              <TableCell className="text-gray-600 text-sm">
+                {app.contactPerson ? (
+                  <span className="truncate max-w-[170px] block">{app.contactPerson}</span>
+                ) : (
+                  <span className="text-gray-300">—</span>
+                )}
+              </TableCell>
+              <TableCell className="text-gray-600 text-sm">
+                {app.contactPosition ? (
+                  <span className="truncate max-w-[170px] block">{app.contactPosition}</span>
+                ) : (
+                  <span className="text-gray-300">Not inferred yet</span>
+                )}
+              </TableCell>
+              <TableCell className="text-gray-600 text-sm">
+                {app.additionalEmails.length > 0 ? (
+                  <span className="truncate max-w-[200px] block">
+                    {app.additionalEmails.join(", ")}
+                  </span>
+                ) : (
+                  <span className="text-gray-300">No additional emails</span>
+                )}
+              </TableCell>
               <TableCell className="text-gray-500 text-sm">
                 <Link href={`/applications/${app.id}`} className="text-blue-600 hover:underline">
                   Find people
@@ -332,7 +448,7 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
           ))}
           {filteredAndSorted.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7} className="text-center py-8 text-gray-400 text-sm">
+              <TableCell colSpan={10} className="text-center py-8 text-gray-400 text-sm">
                 No rows match the current filters.
               </TableCell>
             </TableRow>

@@ -23,6 +23,7 @@ const VALID_STAGES: ApplicationStage[] = [
   "Applied", "Waiting", "Scheduling", "Interviewing", "Assessment", "Offer", "Rejected", "Closed",
 ];
 const VALID_WINDOWS = new Set([30, 90, 180, 365]);
+const RENDER_REFERENCE_MS = Date.now();
 
 interface DashboardPageProps {
   searchParams: Promise<{
@@ -232,25 +233,42 @@ npm run dev`}
     : {};
 
   // Serialize dates for client components
-  const serializedApps = applications.map((app) => ({
-    ...app,
-    appliedAt: app.appliedAt?.toISOString() ?? null,
-    lastActivityAt: app.lastActivityAt.toISOString(),
-    interviewRound: interviewRoundByAppId[app.id]?.round ?? 0,
-    interviewRoundLabel: interviewRoundByAppId[app.id]?.label ?? null,
-    events: app.events.map((e) => ({
-      ...e,
-      occurredAt: e.occurredAt.toISOString(),
-    })),
-  }));
+  const serializedApps = applications.map((app) => {
+    const primaryContact = app.contacts[0];
+    const additionalEmails =
+      primaryContact?.emails
+        ?.filter((email) => !email.isPrimary)
+        .map((email) => email.email)
+        .slice(0, 3) ?? [];
+
+    return {
+      id: app.id,
+      company: app.company,
+      role: app.role,
+      stage: app.stage,
+      appliedAt: app.appliedAt?.toISOString() ?? null,
+      lastActivityAt: app.lastActivityAt.toISOString(),
+      atsProvider: app.atsProvider,
+      recruiter: app.recruiter,
+      interviewRound: interviewRoundByAppId[app.id]?.round ?? 0,
+      interviewRoundLabel: interviewRoundByAppId[app.id]?.label ?? null,
+      contactPerson: primaryContact?.fullName ?? app.recruiter?.name ?? null,
+      contactPosition: primaryContact?.inferredTitle ?? null,
+      contactWebProfileUrl: primaryContact?.webProfileUrl ?? null,
+      additionalEmails,
+      events: app.events.map((e) => ({
+        summary: e.summary,
+        occurredAt: e.occurredAt.toISOString(),
+      })),
+    };
+  });
   const serializedInsightApps = insightApplications.map((app) => ({
-    ...app,
+    id: app.id,
+    stage: app.stage,
+    company: app.company,
+    role: app.role,
     appliedAt: app.appliedAt?.toISOString() ?? null,
     lastActivityAt: app.lastActivityAt.toISOString(),
-    events: app.events.map((e) => ({
-      ...e,
-      occurredAt: e.occurredAt.toISOString(),
-    })),
   }));
 
   const serializedFollowUps = followUps.map((f) => ({
@@ -258,7 +276,7 @@ npm run dev`}
     dueAt: f.dueAt.toISOString(),
   }));
   const windowMs = selectedWindow * 24 * 60 * 60 * 1000;
-  const nowMs = Date.now();
+  const nowMs = RENDER_REFERENCE_MS;
   const windowedApps = serializedApps.filter((app) => {
     const base = app.appliedAt ? new Date(app.appliedAt).getTime() : new Date(app.lastActivityAt).getTime();
     return nowMs - base <= windowMs;

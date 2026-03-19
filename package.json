@@ -7,6 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test:contact-graph": "node --test --experimental-strip-types lib/services/contact-graph.service.test.ts",
     "auto:push": "node scripts/auto-commit-push.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run auto:push\""
   },
