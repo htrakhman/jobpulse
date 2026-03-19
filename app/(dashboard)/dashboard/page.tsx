@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import {
   getApplicationsForUser,
   getDashboardStats,
+  getInterviewRoundsByApplicationIds,
   getInterviewRoundMetrics,
 } from "@/lib/services/application.service";
 import { getFollowUpSuggestions } from "@/lib/services/followup.service";
@@ -223,11 +224,20 @@ npm run dev`}
         },
       ];
 
+  const interviewRoundByAppId = isConnected
+    ? await getInterviewRoundsByApplicationIds(
+        ownerUserId,
+        applications.map((a) => a.id)
+      )
+    : {};
+
   // Serialize dates for client components
   const serializedApps = applications.map((app) => ({
     ...app,
     appliedAt: app.appliedAt?.toISOString() ?? null,
     lastActivityAt: app.lastActivityAt.toISOString(),
+    interviewRound: interviewRoundByAppId[app.id]?.round ?? 0,
+    interviewRoundLabel: interviewRoundByAppId[app.id]?.label ?? null,
     events: app.events.map((e) => ({
       ...e,
       occurredAt: e.occurredAt.toISOString(),

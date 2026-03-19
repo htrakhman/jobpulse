@@ -21,6 +21,8 @@ interface Application {
   stage: ApplicationStage;
   appliedAt: string | null;
   lastActivityAt: string;
+  interviewRound: 0 | 1 | 2 | 3;
+  interviewRoundLabel: string | null;
   atsProvider: string | null;
   recruiter: {
     name: string | null;
@@ -112,6 +114,7 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
         app.role ?? "",
         app.stage,
         STAGE_LABELS[app.stage],
+        app.interviewRoundLabel ?? "",
         latestSummary,
         app.appliedAt ?? "",
         app.lastActivityAt,
@@ -298,7 +301,14 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
                 </span>
               </TableCell>
               <TableCell>
-                <StageBadge stage={app.stage} />
+                <div className="space-y-0.5">
+                  <StageBadge stage={app.stage} />
+                  {app.stage === "Interviewing" && (
+                    <div className="text-[11px] text-gray-500">
+                      {app.interviewRoundLabel ?? "Interview round not detected"}
+                    </div>
+                  )}
+                </div>
               </TableCell>
               <TableCell className="text-gray-500 text-sm">
                 <Link href={`/applications/${app.id}`} className="text-blue-600 hover:underline">

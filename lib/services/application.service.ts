@@ -537,6 +537,72 @@ export interface InterviewRoundMetrics {
   thirdRoundRate: number;
 }
 
+export async function getInterviewRoundsByApplicationIds(
+  userId: string,
+  applicationIds: string[]
+): Promise<Record<string, { round: 0 | 1 | 2 | 3; label: string | null }>> {
+  const prisma = requirePrisma();
+  if (applicationIds.length === 0) return {};
+
+  const applications = await prisma.application.findMany({
+    where: {
+      userId,
+      id: { in: applicationIds },
+    },
+    select: {
+      id: true,
+      company: true,
+      emails: {
+        select: {
+          fromEmail: true,
+          subject: true,
+          snippet: true,
+          bodyText: true,
+          emailType: true,
+        },
+      },
+    },
+  });
+
+  const toLabel = (round: 0 | 1 | 2 | 3): string | null => {
+    if (round === 1) return "1st round";
+    if (round === 2) return "2nd round";
+    if (round === 3) return "3rd/final round";
+    return null;
+  };
+
+  const result: Record<string, { round: 0 | 1 | 2 | 3; label: string | null }> = {};
+
+  for (const app of applications) {
+    let maxRound: 0 | 1 | 2 | 3 = 0;
+
+    for (const email of app.emails) {
+      const domain = extractDomain(email.fromEmail);
+      if (!domain || !isLikelyCompanySender(domain, app.company)) continue;
+
+      const text = `${email.subject ?? ""}\n${email.snippet ?? ""}\n${
+        (email.bodyText ?? "").slice(0, 1200)
+      }`;
+      const detected = detectInterviewRound(text);
+      if (detected > maxRound) {
+        maxRound = detected;
+      } else if (
+        maxRound === 0 &&
+        (email.emailType === "interview_request" || email.emailType === "interview_scheduled")
+      ) {
+        maxRound = 1;
+      }
+    }
+
+    result[app.id] = {
+      round: maxRound,
+      label: toLabel(maxRound),
+    };
+  }
+
+  return result;
+}
+
 export async function getInterviewRoundMetrics(
   userId: string,
   windowDays: number
