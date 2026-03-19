@@ -88,7 +88,57 @@ function windowDaysToMs(days: number): number {
 }
 
 function normalizeCompanyKey(company: string): string {
-  return company.toLowerCase().trim().replace(/\s+/g, " ");
+  return company
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+const COMPANY_STOP_WORDS = new Set([
+  "inc",
+  "llc",
+  "ltd",
+  "corp",
+  "co",
+  "company",
+  "recruiting",
+  "recruitment",
+  "careers",
+  "career",
+  "jobs",
+  "job",
+  "team",
+  "the",
+]);
+
+function canonicalCompanyTokens(company: string): string[] {
+  return normalizeCompanyKey(company)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1 && !COMPANY_STOP_WORDS.has(token));
+}
+
+function isSameCompanyName(a: string, b: string): boolean {
+  const na = normalizeCompanyKey(a);
+  const nb = normalizeCompanyKey(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+
+  // Handle common variants like "Vertice Recruiting" vs "Vertice".
+  if ((na.includes(nb) || nb.includes(na)) && Math.min(na.length, nb.length) >= 5) {
+    return true;
+  }
+
+  const ta = canonicalCompanyTokens(a);
+  const tb = canonicalCompanyTokens(b);
+  if (ta.length === 0 || tb.length === 0) return false;
+
+  const setB = new Set(tb);
+  const intersection = ta.filter((token) => setB.has(token)).length;
+  const union = new Set([...ta, ...tb]).size;
+  const jaccard = union > 0 ? intersection / union : 0;
+  return jaccard >= 0.75;
 }
 
 function pickPreferredCompanyRow(current: Application, candidate: Application): Application {
@@ -160,8 +210,12 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
     const windowMs = windowDaysToMs(windowDays);
     const byCompany = new Map<string, Application>();
     for (const app of applications) {
-      const key = normalizeCompanyKey(app.company);
-      const existing = byCompany.get(key);
+      const normalizedKey = normalizeCompanyKey(app.company);
+      const existingEntry = [...byCompany.entries()].find(([, existingApp]) =>
+        isSameCompanyName(existingApp.company, app.company)
+      );
+      const key = existingEntry?.[0] ?? normalizedKey;
+      const existing = existingEntry?.[1] ?? byCompany.get(key);
       if (!existing) {
         byCompany.set(key, app);
         continue;
