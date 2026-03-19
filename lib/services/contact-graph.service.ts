@@ -50,6 +50,11 @@ interface ViewerIdentity {
   nameTokens: Set<string>;
 }
 
+interface MentionedPerson {
+  email: string;
+  fullName: string | null;
+}
+
 const TITLE_KEYWORDS = [
   "head of",
   "vp ",
@@ -109,6 +114,39 @@ function isLikelyPersonEmail(email: string | null): boolean {
 function extractEmailsFromText(text: string): string[] {
   const matches = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/g) ?? [];
   return [...new Set(matches.map((value) => normalizeEmail(value)))];
+}
+
+function extractMentionedPeopleFromText(text: string): MentionedPerson[] {
+  const results: MentionedPerson[] = [];
+  const seen = new Set<string>();
+
+  const nameEmailRegex = /([A-Za-z][A-Za-z .,'-]{1,80})\s*<([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,})>/g;
+  let match: RegExpExecArray | null;
+  while ((match = nameEmailRegex.exec(text)) !== null) {
+    const fullName = normalizeName(match[1]).replace(/\s+/g, " ").trim();
+    const email = normalizeEmail(match[2]);
+    if (!email) continue;
+    const key = `${email}|${fullName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({
+      email,
+      fullName: fullName ? match[1].trim() : null,
+    });
+  }
+
+  const wroteRegex = /on\s.+?\s([A-Za-z][A-Za-z .,'-]{1,80})\s*<([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,})>\s+wrote:/gi;
+  while ((match = wroteRegex.exec(text)) !== null) {
+    const fullName = match[1]?.trim() ?? null;
+    const email = normalizeEmail(match[2]);
+    if (!email) continue;
+    const key = `${email}|${normalizeName(fullName)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({ email, fullName });
+  }
+
+  return results;
 }
 
 function isViewerIdentityMessage(
@@ -288,57 +326,84 @@ function mergeClusterForMessage(
   nameDomainToCluster: Map<string, string>,
   message: GraphMessage,
   companyDomains: Set<string>,
-  viewerIdentity: ViewerIdentity
+  viewerIdentity: ViewerIdentity,
+  company: string
 ): ContactCluster | null {
-  if (isViewerIdentityMessage(message, viewerIdentity)) return null;
-  const email = normalizeEmail(message.fromEmail);
-  if (!email || !isLikelyPersonEmail(email)) return null;
-  const domain = extractDomain(email);
-  if (!domain) return null;
+  let latestCluster: ContactCluster | null = null;
 
-  const normalizedName = normalizeName(message.fromName);
-  const nameDomainKey = normalizedName ? `${normalizedName}|${domain}` : null;
-  let clusterKey = emailToCluster.get(email) ?? (nameDomainKey ? nameDomainToCluster.get(nameDomainKey) : null);
+  const upsertCandidate = (candidateEmail: string, candidateName: string | null) => {
+    if (!candidateEmail || !isLikelyPersonEmail(candidateEmail)) return;
+    if (viewerIdentity.emails.has(candidateEmail)) return;
+    const candidateDomain = extractDomain(candidateEmail);
+    if (!candidateDomain) return;
+    if (
+      !isLikelyCompanyDomain(candidateDomain, company) &&
+      !companyDomains.has(candidateDomain)
+    ) {
+      return;
+    }
 
-  if (!clusterKey) {
-    clusterKey = `cluster:${email}`;
-    clusters.set(clusterKey, {
-      key: clusterKey,
-      fullName: message.fromName ?? null,
-      emails: new Map(),
-      domains: new Set(),
-      messages: [],
-      titleCandidates: [],
-    });
+    const normalizedName = normalizeName(candidateName);
+    const nameDomainKey = normalizedName ? `${normalizedName}|${candidateDomain}` : null;
+    let clusterKey =
+      emailToCluster.get(candidateEmail) ??
+      (nameDomainKey ? nameDomainToCluster.get(nameDomainKey) : null);
+
+    if (!clusterKey) {
+      clusterKey = `cluster:${candidateEmail}`;
+      clusters.set(clusterKey, {
+        key: clusterKey,
+        fullName: candidateName,
+        emails: new Map(),
+        domains: new Set(),
+        messages: [],
+        titleCandidates: [],
+      });
+    }
+
+    const cluster = clusters.get(clusterKey);
+    if (!cluster) return;
+    if (!cluster.fullName && candidateName) {
+      cluster.fullName = candidateName;
+    }
+    cluster.emails.set(candidateEmail, (cluster.emails.get(candidateEmail) ?? 0) + 1);
+    cluster.domains.add(candidateDomain);
+    cluster.messages.push(message);
+    cluster.titleCandidates.push(...guessTitleFromText(message));
+
+    const bodyEmails = extractEmailsFromText(
+      `${message.subject ?? ""}\n${message.snippet ?? ""}\n${message.bodyText ?? ""}`
+    );
+    for (const discoveredEmail of bodyEmails) {
+      if (!isLikelyPersonEmail(discoveredEmail)) continue;
+      if (viewerIdentity.emails.has(discoveredEmail)) continue;
+      const discoveredDomain = extractDomain(discoveredEmail);
+      if (!discoveredDomain) continue;
+      if (discoveredDomain !== candidateDomain && !companyDomains.has(discoveredDomain)) continue;
+      if (discoveredEmail === candidateEmail) continue;
+      cluster.emails.set(discoveredEmail, (cluster.emails.get(discoveredEmail) ?? 0) + 1);
+    }
+
+    emailToCluster.set(candidateEmail, clusterKey);
+    if (nameDomainKey) nameDomainToCluster.set(nameDomainKey, clusterKey);
+    latestCluster = cluster;
+  };
+
+  // 1) Sender (if not viewer identity)
+  if (!isViewerIdentityMessage(message, viewerIdentity)) {
+    const senderEmail = normalizeEmail(message.fromEmail);
+    upsertCandidate(senderEmail, message.fromName ?? null);
   }
 
-  const cluster = clusters.get(clusterKey);
-  if (!cluster) return null;
-  if (!cluster.fullName && message.fromName) {
-    cluster.fullName = message.fromName;
-  }
-  cluster.emails.set(email, (cluster.emails.get(email) ?? 0) + 1);
-  cluster.domains.add(domain);
-  cluster.messages.push(message);
-  cluster.titleCandidates.push(...guessTitleFromText(message));
-
-  const bodyEmails = extractEmailsFromText(
+  // 2) Mentioned people in quoted chains/signatures, e.g. "Caroline <caroline@vertice.one>"
+  const mentions = extractMentionedPeopleFromText(
     `${message.subject ?? ""}\n${message.snippet ?? ""}\n${message.bodyText ?? ""}`
   );
-  for (const discoveredEmail of bodyEmails) {
-    if (!isLikelyPersonEmail(discoveredEmail)) continue;
-    if (viewerIdentity.emails.has(discoveredEmail)) continue;
-    const discoveredDomain = extractDomain(discoveredEmail);
-    if (!discoveredDomain) continue;
-    // Keep plausible alternates: same sender domain or likely company-work domain.
-    if (discoveredDomain !== domain && !companyDomains.has(discoveredDomain)) continue;
-    if (discoveredEmail === email) continue;
-    cluster.emails.set(discoveredEmail, (cluster.emails.get(discoveredEmail) ?? 0) + 1);
+  for (const mention of mentions) {
+    upsertCandidate(mention.email, mention.fullName);
   }
 
-  emailToCluster.set(email, clusterKey);
-  if (nameDomainKey) nameDomainToCluster.set(nameDomainKey, clusterKey);
-  return cluster;
+  return latestCluster;
 }
 
 async function loadGraphMessages(userId: string, applicationId: string): Promise<{
@@ -481,7 +546,8 @@ export async function recomputeContactGraphForApplication(
       nameDomainToCluster,
       message,
       companyDomains,
-      viewerIdentity
+      viewerIdentity,
+      company
     );
   }
 
