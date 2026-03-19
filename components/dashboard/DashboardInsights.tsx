@@ -340,6 +340,11 @@ export function DashboardInsights({
         </p>
       </div>
 
+      <div className="lg:col-span-2 grid gap-4 md:grid-cols-2">
+        <DonutChart title="Applications by Industry" data={industryData} />
+        <DonutChart title="Applications by Company Size" data={companySizeData} />
+      </div>
+
       <div className="lg:col-span-3 border border-gray-200 rounded-xl bg-white p-4">
         <p className="text-sm font-semibold text-gray-800 mb-3">Stage Distribution</p>
         <div className="grid md:grid-cols-2 gap-2">
@@ -359,11 +364,6 @@ export function DashboardInsights({
             );
           })}
         </div>
-      </div>
-
-      <div className="lg:col-span-3 grid gap-4 md:grid-cols-2">
-        <DonutChart title="Applications by Industry" data={industryData} />
-        <DonutChart title="Applications by Company Size" data={companySizeData} />
       </div>
     </div>
   );
