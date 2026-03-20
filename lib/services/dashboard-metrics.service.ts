@@ -41,27 +41,89 @@ function weekBounds(reference: Date): { start: Date; end: Date; progressRatio: n
 }
 
 function buildFunnelSteps(params: {
-  apps: Array<{ stage: ApplicationStage }>;
+  apps: Array<{
+    id: string;
+    company: string;
+    role: string | null;
+    stage: ApplicationStage;
+    lastActivityAt: Date;
+  }>;
   priorApps: Array<{ stage: ApplicationStage }>;
 }): FunnelStepMetric[] {
   const countIn = (stages: ApplicationStage[], source: Array<{ stage: ApplicationStage }>) =>
     source.filter((a) => stages.includes(a.stage)).length;
+  const totalApps = params.apps.length;
+  const totalPriorApps = params.priorApps.length;
+  const reachedInterviewStages: ApplicationStage[] = ["Interviewing", "Assessment", "Offer", "Rejected", "Closed"];
   const defs = [
-    { key: "applied_waiting", from: "Applied", to: "Awaiting Response", fromStages: ["Applied"] as ApplicationStage[], toStages: ["Waiting"] as ApplicationStage[] },
-    { key: "applied_scheduling", from: "Applied", to: "Scheduling", fromStages: ["Applied"] as ApplicationStage[], toStages: ["Scheduling"] as ApplicationStage[] },
-    { key: "applied_interviewing", from: "Applied", to: "Interviewing+", fromStages: ["Applied"] as ApplicationStage[], toStages: ["Interviewing", "Assessment", "Offer"] as ApplicationStage[] },
-    { key: "interview_assessment", from: "Interviewing", to: "Assessment", fromStages: ["Interviewing", "Assessment", "Offer"] as ApplicationStage[], toStages: ["Assessment", "Offer"] as ApplicationStage[] },
-    { key: "interview_offer", from: "Interviewing", to: "Offer", fromStages: ["Interviewing", "Assessment", "Offer"] as ApplicationStage[], toStages: ["Offer"] as ApplicationStage[] },
-    { key: "offer_closed", from: "Offer", to: "Closed/Resolved", fromStages: ["Offer"] as ApplicationStage[], toStages: ["Closed", "Rejected"] as ApplicationStage[] },
+    {
+      key: "applied_waiting",
+      from: "Applied",
+      to: "Awaiting Response",
+      denominator: totalApps,
+      priorDenominator: totalPriorApps,
+      toStages: ["Waiting"] as ApplicationStage[],
+    },
+    {
+      key: "applied_scheduling",
+      from: "Applied",
+      to: "Scheduling",
+      denominator: totalApps,
+      priorDenominator: totalPriorApps,
+      toStages: ["Scheduling"] as ApplicationStage[],
+    },
+    {
+      key: "applied_interviewing",
+      from: "Applied",
+      to: "Interviewing+",
+      denominator: totalApps,
+      priorDenominator: totalPriorApps,
+      toStages: ["Interviewing", "Assessment", "Offer", "Rejected", "Closed"] as ApplicationStage[],
+    },
+    {
+      key: "interview_assessment",
+      from: "Interviewing",
+      to: "Assessment",
+      denominator: countIn(reachedInterviewStages, params.apps),
+      priorDenominator: countIn(reachedInterviewStages, params.priorApps),
+      toStages: ["Assessment", "Offer", "Rejected", "Closed"] as ApplicationStage[],
+    },
+    {
+      key: "interview_offer",
+      from: "Interviewing",
+      to: "Offer",
+      denominator: countIn(reachedInterviewStages, params.apps),
+      priorDenominator: countIn(reachedInterviewStages, params.priorApps),
+      toStages: ["Offer"] as ApplicationStage[],
+    },
+    {
+      key: "offer_closed",
+      from: "Offer",
+      to: "Closed/Resolved",
+      denominator: countIn(["Offer", "Rejected", "Closed"], params.apps),
+      priorDenominator: countIn(["Offer", "Rejected", "Closed"], params.priorApps),
+      toStages: ["Rejected", "Closed"] as ApplicationStage[],
+    },
   ];
 
   return defs.map((def) => {
-    const denominator = countIn(def.fromStages, params.apps);
+    const denominator = def.denominator;
     const count = countIn(def.toStages, params.apps);
-    const priorDenominator = countIn(def.fromStages, params.priorApps);
+    const priorDenominator = def.priorDenominator;
     const priorCount = countIn(def.toStages, params.priorApps);
     const conversionPct = pct(count, denominator);
     const priorPct = pct(priorCount, priorDenominator);
+    const companies = params.apps
+      .filter((app) => def.toStages.includes(app.stage))
+      .sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime())
+      .map((app) => ({
+        id: app.id,
+        company: app.company,
+        role: app.role,
+        stage: app.stage,
+        lastActivityAt: app.lastActivityAt.toISOString(),
+      }))
+      .slice(0, 50);
     return {
       key: def.key,
       from: def.from,
@@ -72,6 +134,7 @@ function buildFunnelSteps(params: {
       priorCount,
       priorDenominator,
       deltaPct: conversionPct - priorPct,
+      companies,
     };
   });
 }
@@ -315,7 +378,13 @@ export async function getDashboardOSPayload(userId: string, windowDays: number):
   const priorApps = dedupeByCompany(priorAppsRaw);
 
   const funnelSteps = buildFunnelSteps({
-    apps: apps.map((a) => ({ stage: a.stage as ApplicationStage })),
+    apps: apps.map((a) => ({
+      id: a.id,
+      company: a.company,
+      role: a.role,
+      stage: a.stage as ApplicationStage,
+      lastActivityAt: a.lastActivityAt,
+    })),
     priorApps: priorApps.map((a) => ({ stage: a.stage as ApplicationStage })),
   });
 

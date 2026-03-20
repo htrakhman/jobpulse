@@ -382,23 +382,23 @@ npm run dev`}
       {/* Connect banner */}
       {!isConnected && <ConnectGmailBanner />}
 
-      {/* Decision-value order */}
-      <ActionCenter actionCenter={osPayload.actionCenter} />
-      <FunnelMetrics funnel={osPayload.funnel} />
-      <FollowupIntelligencePanel followup={osPayload.followup} />
-      <GoalsPacingPanel goals={osPayload.goals} />
-      <AttributionPanel attribution={osPayload.attribution} />
-      <TimeToEventPanel timeToEvent={osPayload.timeToEvent} />
+      {/* Executive top section */}
       <SmartInsightsPanel insights={osPayload.insights} weightedPipelineScore={osPayload.weightedPipelineScore} />
-
-      {/* Existing summary + lower priority segmentation */}
-      <StatsBar stats={stats} selectedStages={selectedStages} />
       <DashboardInsights
         applications={serializedInsightApps}
         windowDays={selectedWindow}
         selectedStages={selectedStages}
         roundMetrics={roundMetrics}
       />
+      <StatsBar stats={stats} selectedStages={selectedStages} />
+
+      {/* Operational execution sections */}
+      <ActionCenter actionCenter={osPayload.actionCenter} />
+      <FunnelMetrics funnel={osPayload.funnel} />
+      <FollowupIntelligencePanel followup={osPayload.followup} />
+      <GoalsPacingPanel goals={osPayload.goals} />
+      <AttributionPanel attribution={osPayload.attribution} />
+      <TimeToEventPanel timeToEvent={osPayload.timeToEvent} />
 
       {applications.length > 0 && (
         <div className="mb-6 border border-blue-200 bg-blue-50 rounded-xl p-4 flex items-center justify-between gap-3">

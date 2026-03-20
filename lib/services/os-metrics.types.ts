@@ -21,6 +21,13 @@ export interface FunnelStepMetric {
   priorCount: number;
   priorDenominator: number;
   deltaPct: number;
+  companies: Array<{
+    id: string;
+    company: string;
+    role: string | null;
+    stage: ApplicationStage;
+    lastActivityAt: string;
+  }>;
 }
 
 export interface FollowupIntelligenceRow {
