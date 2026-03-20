@@ -171,69 +171,145 @@ function buildSmartInsights(payload: {
 
 export async function getDashboardOSPayload(userId: string, windowDays: number): Promise<DashboardOSPayload> {
   const prisma = requirePrisma();
+  const userGoalModel = (prisma as unknown as { userGoal?: { findFirst?: (args: unknown) => Promise<{
+    dailyApplicationGoal: number;
+    weeklyApplicationGoal: number;
+    weeklyInterviewGoal: number;
+    weeklyNetworkingGoal: number;
+    weeklyFollowupGoal: number;
+  } | null> } }).userGoal;
   const now = new Date();
   const windowStart = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
   const priorWindowStart = new Date(windowStart.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
-  const [appsRaw, priorAppsRaw, activeFollowups, goals] = await Promise.all([
-    prisma.application.findMany({
-      where: {
-        userId,
-        OR: [{ appliedAt: { gte: windowStart } }, { lastActivityAt: { gte: windowStart } }],
-      },
-      select: {
-        id: true,
-        company: true,
-        role: true,
-        stage: true,
-        source: true,
-        method: true,
-        resumeVersion: true,
-        targetPriority: true,
-        roleDesirabilityScore: true,
-        companyDesirabilityScore: true,
-        stageEnteredAt: true,
-        appliedAt: true,
-        lastActivityAt: true,
-        nextAction: true,
-        nextActionDate: true,
-        followUps: {
-          where: { dismissed: false, completed: false },
-          select: { id: true, dueAt: true, createdAt: true },
+  let appsRaw: Array<{
+    id: string;
+    company: string;
+    role: string | null;
+    stage: ApplicationStage;
+    source?: string | null;
+    method?: string | null;
+    resumeVersion?: string | null;
+    targetPriority?: string | null;
+    roleDesirabilityScore?: number | null;
+    companyDesirabilityScore?: number | null;
+    stageEnteredAt?: Date | null;
+    appliedAt: Date | null;
+    lastActivityAt: Date;
+    nextAction?: string | null;
+    nextActionDate?: Date | null;
+  }> = [];
+  let priorAppsRaw: Array<{ company: string; stage: ApplicationStage; lastActivityAt: Date }> = [];
+  let activeFollowups: Array<{
+    id: string;
+    application: {
+      id: string;
+      company: string;
+      role: string | null;
+      stage: ApplicationStage;
+      lastActivityAt: Date;
+    };
+  }> = [];
+  const goals = await (userGoalModel?.findFirst
+    ? userGoalModel.findFirst({
+        where: { userId, isActive: true },
+        orderBy: { updatedAt: "desc" },
+      })
+    : Promise.resolve(null));
+
+  try {
+    [appsRaw, priorAppsRaw, activeFollowups] = await Promise.all([
+      prisma.application.findMany({
+        where: {
+          userId,
+          OR: [{ appliedAt: { gte: windowStart } }, { lastActivityAt: { gte: windowStart } }],
         },
-        events: {
-          orderBy: { occurredAt: "desc" },
-          take: 1,
-          select: {
-            occurredAt: true,
-            emailType: true,
+        select: {
+          id: true,
+          company: true,
+          role: true,
+          stage: true,
+          source: true,
+          method: true,
+          resumeVersion: true,
+          targetPriority: true,
+          roleDesirabilityScore: true,
+          companyDesirabilityScore: true,
+          stageEnteredAt: true,
+          appliedAt: true,
+          lastActivityAt: true,
+          nextAction: true,
+          nextActionDate: true,
+          followUps: {
+            where: { dismissed: false, completed: false },
+            select: { id: true, dueAt: true, createdAt: true },
+          },
+          events: {
+            orderBy: { occurredAt: "desc" },
+            take: 1,
+            select: {
+              occurredAt: true,
+              emailType: true,
+            },
           },
         },
-      },
-      orderBy: { lastActivityAt: "desc" },
-    }),
-    prisma.application.findMany({
-      where: {
-        userId,
-        OR: [{ appliedAt: { gte: priorWindowStart, lt: windowStart } }, { lastActivityAt: { gte: priorWindowStart, lt: windowStart } }],
-      },
-      select: {
-        company: true,
-        stage: true,
-        lastActivityAt: true,
-      },
-    }),
-    prisma.followUpSuggestion.findMany({
-      where: { userId, dismissed: false, completed: false },
-      include: { application: { select: { id: true, company: true, role: true, stage: true, lastActivityAt: true, nextActionDate: true } } },
-      orderBy: { dueAt: "asc" },
-      take: 50,
-    }),
-    prisma.userGoal.findFirst({
-      where: { userId, isActive: true },
-      orderBy: { updatedAt: "desc" },
-    }),
-  ]);
+        orderBy: { lastActivityAt: "desc" },
+      }) as never,
+      prisma.application.findMany({
+        where: {
+          userId,
+          OR: [{ appliedAt: { gte: priorWindowStart, lt: windowStart } }, { lastActivityAt: { gte: priorWindowStart, lt: windowStart } }],
+        },
+        select: {
+          company: true,
+          stage: true,
+          lastActivityAt: true,
+        },
+      }) as never,
+      prisma.followUpSuggestion.findMany({
+        where: { userId, dismissed: false, completed: false },
+        include: { application: { select: { id: true, company: true, role: true, stage: true, lastActivityAt: true, nextActionDate: true } } },
+        orderBy: { dueAt: "asc" },
+        take: 50,
+      }) as never,
+    ]);
+  } catch {
+    // Older Prisma client fallback: avoid selecting newly-added fields.
+    [appsRaw, priorAppsRaw, activeFollowups] = await Promise.all([
+      prisma.application.findMany({
+        where: {
+          userId,
+          OR: [{ appliedAt: { gte: windowStart } }, { lastActivityAt: { gte: windowStart } }],
+        },
+        select: {
+          id: true,
+          company: true,
+          role: true,
+          stage: true,
+          appliedAt: true,
+          lastActivityAt: true,
+        },
+        orderBy: { lastActivityAt: "desc" },
+      }) as never,
+      prisma.application.findMany({
+        where: {
+          userId,
+          OR: [{ appliedAt: { gte: priorWindowStart, lt: windowStart } }, { lastActivityAt: { gte: priorWindowStart, lt: windowStart } }],
+        },
+        select: {
+          company: true,
+          stage: true,
+          lastActivityAt: true,
+        },
+      }) as never,
+      prisma.followUpSuggestion.findMany({
+        where: { userId, dismissed: false, completed: false },
+        include: { application: { select: { id: true, company: true, role: true, stage: true, lastActivityAt: true } } },
+        orderBy: { dueAt: "asc" },
+        take: 50,
+      }) as never,
+    ]);
+  }
 
   const apps = dedupeByCompany(appsRaw);
   const priorApps = dedupeByCompany(priorAppsRaw);
