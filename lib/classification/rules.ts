@@ -340,6 +340,8 @@ const RULES: Rule[] = [
   },
 
   // ── APPLICATION CONFIRMATION ─────────────────────────────────────────────
+  // Many ATS / employers use variants: "thank you for your application to {Co}",
+  // "thank you for applying to {Co}", "we received your application for …", etc.
   {
     name: "application_confirmation_subject",
     emailType: "application_confirmation",
@@ -348,12 +350,25 @@ const RULES: Rule[] = [
       subjectContains(
         subject,
         "thank you for applying",
+        "thank you for applying to",
+        "thanks for applying",
+        "thanks for applying to",
+        "thank you for your application",
+        "thank you for your application to",
+        "thanks for your application",
+        "thanks for your application to",
         "application received",
         "we have received your application",
         "your application has been received",
-        "thanks for applying",
         "application submitted",
-        "we received your application"
+        "we received your application",
+        "we've received your application",
+        "we appreciate your application",
+        "thank you for submitting your application",
+        "thanks for submitting your application",
+        "your application was submitted",
+        "application successfully submitted",
+        "confirmation of your application"
       ),
   },
   {
@@ -366,8 +381,22 @@ const RULES: Rule[] = [
         "your application has been received",
         "we have received your application",
         "we received your application",
+        "we've received your application",
         "thank you for applying",
-        "thanks for applying"
+        "thank you for applying to",
+        "thanks for applying",
+        "thanks for applying to",
+        "thank you for your application",
+        "thank you for your application to",
+        "thanks for your application",
+        "thanks for your application to",
+        "we appreciate your application",
+        "thank you for submitting your application",
+        "thanks for submitting your application",
+        "your application was submitted",
+        "application successfully submitted",
+        "confirmation of your application",
+        "this email confirms that we have received your application"
       ),
   },
 

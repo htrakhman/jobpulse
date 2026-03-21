@@ -120,7 +120,7 @@ From any application, click **Find Contacts** to search for people at that compa
 
 | Pattern | Type | Stage |
 |---|---|---|
-| Subject: "thank you for applying" / "application received" | `application_confirmation` | Applied |
+| Subject/body: "thank you for applying (to …)", "thank you for your application (to …)", "application received", "we received your application", similar | `application_confirmation` | Applied |
 | Subject: "availability request" + body: "interview" | `interview_request` | Interviewing |
 | Body: "invite you to a ... interview" | `interview_request` | Interviewing |
 | Body: "please use the link below to select a time" | `interview_scheduled` | Interviewing |

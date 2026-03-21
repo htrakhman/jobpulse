@@ -320,6 +320,57 @@ export async function getApplicationsForUser(
   });
 }
 
+/**
+ * Build per-day counts of job applications using the inbox: the first
+ * `application_confirmation` email linked to each Application (typical “thank you for applying” /
+ * “thank you for your application to …”, “application received”, and similar ATS wording).
+ * One row per application — matches how fast confirmation emails arrive after applying.
+ */
+export async function getApplicationConfirmationInsightData(
+  userId: string,
+  windowDays: number
+): Promise<{
+  /** First application_confirmation email per app, calendar day key (for charts + stage filters). */
+  perApplication: Array<{ applicationId: string; dayKey: string }>;
+}> {
+  const prisma = requirePrisma();
+  const windowMs = windowDays * 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
+
+  const emails = await prisma.emailMessage.findMany({
+    where: {
+      userId,
+      emailType: "application_confirmation",
+      applicationId: { not: null },
+    },
+    select: { applicationId: true, receivedAt: true },
+    orderBy: { receivedAt: "asc" },
+    take: 20000,
+  });
+
+  const firstConfirmByApp = new Map<string, Date>();
+  for (const row of emails) {
+    if (!row.applicationId) continue;
+    if (!firstConfirmByApp.has(row.applicationId)) {
+      firstConfirmByApp.set(row.applicationId, row.receivedAt);
+    }
+  }
+
+  const perApplication: Array<{ applicationId: string; dayKey: string }> = [];
+
+  for (const [applicationId, receivedAt] of firstConfirmByApp) {
+    const t = receivedAt.getTime();
+    if (t > nowMs || nowMs - t > windowMs) continue;
+
+    const d = new Date(receivedAt);
+    d.setHours(0, 0, 0, 0);
+    const dayKey = d.toISOString().slice(0, 10);
+    perApplication.push({ applicationId, dayKey });
+  }
+
+  return { perApplication };
+}
+
 export async function getApplicationById(userId: string, applicationId: string) {
   const prisma = requirePrisma();
   return prisma.application.findFirst({

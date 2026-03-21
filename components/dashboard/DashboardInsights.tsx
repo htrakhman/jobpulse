@@ -12,20 +12,38 @@ interface InsightApplication {
   lastActivityAt: string;
 }
 
+export type InsightTrendMode = "inbox_confirmation" | "applied_at_record" | "activity_date";
+
 interface DashboardInsightsProps {
   applications: InsightApplication[];
   windowDays: number;
   selectedStages?: ApplicationStage[];
-  roundMetrics: {
-    total: number;
-    firstRoundCount: number;
-    secondRoundCount: number;
-    thirdRoundCount: number;
-    firstRoundRate: number;
-    secondRoundRate: number;
-    thirdRoundRate: number;
-  };
+  /** First application_confirmation email per application (from inbox scan). */
+  inboxInsightData?: { perApplication: Array<{ applicationId: string; dayKey: string }> };
 }
+
+const TREND_MODE_OPTIONS: Array<{
+  value: InsightTrendMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "inbox_confirmation",
+    label: "Applications (inbox confirmations)",
+    description:
+      "Per day: jobs where the first inbox confirmation landed (e.g. “thank you for applying”, “thank you for your application to …”, “application received”, and similar).",
+  },
+  {
+    value: "applied_at_record",
+    label: "Applied date (record)",
+    description: "Uses stored appliedAt only; company-deduped; rolling window by applied/activity.",
+  },
+  {
+    value: "activity_date",
+    label: "Any activity date",
+    description: "Uses appliedAt or lastActivity per day; company-deduped (broader than strict applies).",
+  },
+];
 
 const STAGE_GROUPS: Array<{ key: ApplicationStage; label: string; color: string }> = [
   { key: "Applied", label: "Applied", color: "bg-blue-500" },
@@ -136,6 +154,23 @@ function pickPreferredCompanyRow(
   return candidateStageRank > currentStageRank ? candidate : current;
 }
 
+function dedupeByCompany(apps: InsightApplication[]): InsightApplication[] {
+  const byCompany = new Map<string, InsightApplication>();
+  for (const app of apps) {
+    const existingEntry = [...byCompany.entries()].find(([, existing]) =>
+      isSameCompanyName(existing.company, app.company)
+    );
+    const key = existingEntry?.[0] ?? normalizeCompanyKey(app.company);
+    const existing = existingEntry?.[1] ?? byCompany.get(key);
+    if (!existing) {
+      byCompany.set(key, app);
+    } else {
+      byCompany.set(key, pickPreferredCompanyRow(existing, app));
+    }
+  }
+  return [...byCompany.values()];
+}
+
 function inferIndustry(company: string, role: string | null): string {
   const text = `${company} ${role ?? ""}`.toLowerCase();
   if (/(health|care|biotech|bio|med)/i.test(text)) return "Healthcare/Biotech";
@@ -154,8 +189,7 @@ function inferCompanySizeBucket(company: string): string {
   const c = company.toLowerCase();
   if (/(international|global|corporation|corp|holdings|group|systems|technologies)/i.test(c))
     return "Enterprise (1000+)";
-  if (/(labs|studio|ventures|ai|io|startup)/i.test(c))
-    return "Startup (1-50)";
+  if (/(labs|studio|ventures|ai|io|startup)/i.test(c)) return "Startup (1-50)";
   return "Mid-market (51-999)";
 }
 
@@ -208,7 +242,9 @@ function DonutChart({
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
                 {item.label}
               </span>
-              <span className="text-gray-700">{item.value} ({item.pct.toFixed(0)}%)</span>
+              <span className="text-gray-700">
+                {item.value} ({item.pct.toFixed(0)}%)
+              </span>
             </div>
           ))}
         </div>
@@ -221,37 +257,55 @@ export function DashboardInsights({
   applications,
   windowDays,
   selectedStages = [],
-  roundMetrics,
+  inboxInsightData = { perApplication: [] },
 }: DashboardInsightsProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [trendMode, setTrendMode] = useState<InsightTrendMode>("inbox_confirmation");
+
   const now = new Date();
   const windowMs = windowDays * 24 * 60 * 60 * 1000;
-  const byCompany = new Map<string, InsightApplication>();
-  for (const app of applications) {
-    const existingEntry = [...byCompany.entries()].find(([, existing]) =>
-      isSameCompanyName(existing.company, app.company)
-    );
-    const key = existingEntry?.[0] ?? normalizeCompanyKey(app.company);
-    const existing = existingEntry?.[1] ?? byCompany.get(key);
-    if (!existing) {
-      byCompany.set(key, app);
-    } else {
-      byCompany.set(key, pickPreferredCompanyRow(existing, app));
-    }
-  }
-  const dedupedApps = [...byCompany.values()];
 
-  const filteredApps = dedupedApps.filter((app) => {
-    const source = app.appliedAt ? new Date(app.appliedAt) : new Date(app.lastActivityAt);
+  const stageFiltered = applications.filter(
+    (app) => selectedStages.length === 0 || selectedStages.includes(app.stage)
+  );
+
+  const firstConfirmDayByAppId = new Map(
+    inboxInsightData.perApplication.map((p) => [p.applicationId, p.dayKey])
+  );
+
+  /** Cohort for inbox mode: applications with a first confirmation in the rolling window, stage-filtered. */
+  const inboxCohortApps = stageFiltered.filter((app) => firstConfirmDayByAppId.has(app.id));
+
+  const dedupedStageFiltered = dedupeByCompany(stageFiltered);
+
+  const filteredAppliedAtRecord = dedupedStageFiltered.filter((app) => {
+    if (!app.appliedAt) return false;
+    const source = new Date(app.appliedAt);
     if (now.getTime() - source.getTime() > windowMs) return false;
-    if (selectedStages.length > 0 && !selectedStages.includes(app.stage)) return false;
     return true;
   });
 
-  const total = filteredApps.length;
+  const filteredActivityDate = dedupedStageFiltered.filter((app) => {
+    const source = app.appliedAt ? new Date(app.appliedAt) : new Date(app.lastActivityAt);
+    if (now.getTime() - source.getTime() > windowMs) return false;
+    return true;
+  });
+
+  let cohortForPiesAndStage: InsightApplication[];
+  if (trendMode === "inbox_confirmation") {
+    cohortForPiesAndStage = inboxCohortApps;
+  } else if (trendMode === "applied_at_record") {
+    cohortForPiesAndStage = filteredAppliedAtRecord;
+  } else {
+    cohortForPiesAndStage = filteredActivityDate;
+  }
+
+  const total = cohortForPiesAndStage.length;
   const byStage = new Map<ApplicationStage, number>();
   for (const stage of STAGE_GROUPS.map((s) => s.key)) byStage.set(stage, 0);
-  for (const app of filteredApps) byStage.set(app.stage, (byStage.get(app.stage) ?? 0) + 1);
+  for (const app of cohortForPiesAndStage) {
+    byStage.set(app.stage, (byStage.get(app.stage) ?? 0) + 1);
+  }
 
   const days = Math.max(30, Math.min(365, windowDays));
   const today = new Date(now);
@@ -268,25 +322,49 @@ export function DashboardInsights({
     });
   }
   const bucketMap = new Map(buckets.map((b, idx) => [b.key, idx]));
-  for (const app of filteredApps) {
-    const source = app.appliedAt ? new Date(app.appliedAt) : new Date(app.lastActivityAt);
-    source.setHours(0, 0, 0, 0);
-    const dayKey = source.toISOString().slice(0, 10);
-    const idx = bucketMap.get(dayKey);
-    if (idx !== undefined) buckets[idx].count += 1;
+
+  if (trendMode === "inbox_confirmation") {
+    for (const app of inboxCohortApps) {
+      const dayKey = firstConfirmDayByAppId.get(app.id);
+      if (!dayKey) continue;
+      const idx = bucketMap.get(dayKey);
+      if (idx !== undefined) buckets[idx].count += 1;
+    }
+  } else if (trendMode === "applied_at_record") {
+    for (const app of filteredAppliedAtRecord) {
+      if (!app.appliedAt) continue;
+      const source = new Date(app.appliedAt);
+      source.setHours(0, 0, 0, 0);
+      const dayKey = source.toISOString().slice(0, 10);
+      const idx = bucketMap.get(dayKey);
+      if (idx !== undefined) buckets[idx].count += 1;
+    }
+  } else {
+    for (const app of filteredActivityDate) {
+      const source = app.appliedAt ? new Date(app.appliedAt) : new Date(app.lastActivityAt);
+      source.setHours(0, 0, 0, 0);
+      const dayKey = source.toISOString().slice(0, 10);
+      const idx = bucketMap.get(dayKey);
+      if (idx !== undefined) buckets[idx].count += 1;
+    }
   }
+
+  const modeMeta = TREND_MODE_OPTIONS.find((o) => o.value === trendMode)!;
+  const chartTitle =
+    trendMode === "inbox_confirmation"
+      ? `Application trend — inbox confirmations (daily, last ${days} days)`
+      : trendMode === "applied_at_record"
+        ? `Application trend — applied date (daily, last ${days} days)`
+        : `Application trend — activity date (daily, last ${days} days)`;
+
   const rawMax = Math.max(1, ...buckets.map((b) => b.count));
   const maxY = niceAxisMax(Math.ceil(rawMax * 1.15));
-  const averagePerDay = buckets.length
-    ? buckets.reduce((sum, b) => sum + b.count, 0) / buckets.length
-    : 0;
+  const averagePerDay = buckets.length ? buckets.reduce((sum, b) => sum + b.count, 0) / buckets.length : 0;
   const peak = buckets.reduce(
     (best, b) => (b.count > best.count ? b : best),
     { key: "", label: "-", count: 0 }
   );
-  const yTicks = Array.from({ length: 5 }, (_, i) =>
-    Math.round(((4 - i) / 4) * maxY)
-  );
+  const yTicks = Array.from({ length: 5 }, (_, i) => Math.round(((4 - i) / 4) * maxY));
   const chartPoints = buckets.map((b, i) => {
     const x = (i / Math.max(1, buckets.length - 1)) * 100;
     const y = 100 - (b.count / maxY) * 100;
@@ -301,38 +379,63 @@ export function DashboardInsights({
     return cur !== prev;
   });
   const activeHover = hoverIndex !== null ? chartPoints[hoverIndex] : null;
+
+  const pieAppsForIndustry =
+    trendMode === "inbox_confirmation"
+      ? cohortForPiesAndStage
+      : cohortForPiesAndStage.filter((a) => !!a.appliedAt).length > 0
+        ? cohortForPiesAndStage.filter((a) => !!a.appliedAt)
+        : cohortForPiesAndStage;
+
   const industryData = buildDistribution(
-    (filteredApps.filter((a) => !!a.appliedAt).length > 0
-      ? filteredApps.filter((a) => !!a.appliedAt)
-      : filteredApps
-    ).map((a) => inferIndustry(a.company, a.role)),
+    pieAppsForIndustry.map((a) => inferIndustry(a.company, a.role)),
     INDUSTRY_COLORS
   );
   const companySizeData = buildDistribution(
-    (filteredApps.filter((a) => !!a.appliedAt).length > 0
-      ? filteredApps.filter((a) => !!a.appliedAt)
-      : filteredApps
-    ).map((a) => inferCompanySizeBucket(a.company)),
+    pieAppsForIndustry.map((a) => inferCompanySizeBucket(a.company)),
     SIZE_COLORS
   );
 
   return (
-    <div className="mb-6 grid gap-4 lg:grid-cols-3">
-      <div className="lg:col-span-2 border border-gray-200 rounded-xl bg-white p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold text-gray-800">
-            Application Trend (daily, last {days} days)
-          </p>
-          <div className="text-[11px] text-gray-500 flex items-center gap-2">
-            <span className="rounded bg-gray-50 px-2 py-1">Total <strong className="text-gray-700">{total}</strong></span>
-            <span className="rounded bg-gray-50 px-2 py-1">Avg/day <strong className="text-gray-700">{averagePerDay.toFixed(2)}</strong></span>
-            <span className="rounded bg-gray-50 px-2 py-1">Peak day <strong className="text-gray-700">{peak.count}</strong></span>
-            {selectedStages.length > 0 && (
-              <span className="rounded bg-gray-900 text-white px-2 py-1">
-                Stage: <strong>{selectedStages.join(", ")}</strong>
-              </span>
-            )}
+    <div className="mb-6 grid gap-4">
+      <div className="border border-gray-200 rounded-xl bg-white p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-3">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">{chartTitle}</p>
+            <p className="text-[11px] text-gray-500 mt-1 max-w-xl">{modeMeta.description}</p>
           </div>
+          <div className="flex flex-col items-stretch sm:items-end gap-2 shrink-0">
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+              Chart &amp; pie view
+            </label>
+            <select
+              value={trendMode}
+              onChange={(e) => setTrendMode(e.target.value as InsightTrendMode)}
+              className="h-9 min-w-[220px] rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-800"
+            >
+              {TREND_MODE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="text-[11px] text-gray-500 flex flex-wrap items-center gap-2 mb-2">
+          <span className="rounded bg-gray-50 px-2 py-1">
+            Total <strong className="text-gray-700">{total}</strong>
+          </span>
+          <span className="rounded bg-gray-50 px-2 py-1">
+            Avg/day <strong className="text-gray-700">{averagePerDay.toFixed(2)}</strong>
+          </span>
+          <span className="rounded bg-gray-50 px-2 py-1">
+            Peak day <strong className="text-gray-700">{peak.count}</strong>
+          </span>
+          {selectedStages.length > 0 && (
+            <span className="rounded bg-gray-900 text-white px-2 py-1">
+              Stage filter: <strong>{selectedStages.join(", ")}</strong>
+            </span>
+          )}
         </div>
         <div
           className="w-full h-52 relative pl-8 pr-2"
@@ -350,7 +453,11 @@ export function DashboardInsights({
               <span key={i}>{tick}</span>
             ))}
           </div>
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full rounded-lg bg-gradient-to-b from-blue-50/40 to-white">
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="w-full h-full rounded-lg bg-gradient-to-b from-blue-50/40 to-white"
+          >
             <defs>
               <linearGradient id="trendArea" x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.22" />
@@ -364,20 +471,24 @@ export function DashboardInsights({
               );
             })}
             <polygon points={areaPath} fill="url(#trendArea)" />
-            <polyline fill="none" stroke="#2563eb" strokeWidth="2.2" points={linePath} vectorEffect="non-scaling-stroke" />
+            <polyline
+              fill="none"
+              stroke="#2563eb"
+              strokeWidth="2.2"
+              points={linePath}
+              vectorEffect="non-scaling-stroke"
+            />
 
             {activeHover && (
-              <>
-                <line
-                  x1={activeHover.x}
-                  y1="0"
-                  x2={activeHover.x}
-                  y2="100"
-                  stroke="#93c5fd"
-                  strokeDasharray="1.5 1.5"
-                  strokeWidth="0.8"
-                />
-              </>
+              <line
+                x1={activeHover.x}
+                y1="0"
+                x2={activeHover.x}
+                y2="100"
+                stroke="#93c5fd"
+                strokeDasharray="1.5 1.5"
+                strokeWidth="0.8"
+              />
             )}
           </svg>
           {activeHover && (
@@ -389,7 +500,9 @@ export function DashboardInsights({
               }}
             >
               <div className="font-medium text-gray-700">{activeHover.label}</div>
-              <div className="text-gray-500">{activeHover.count} application{activeHover.count === 1 ? "" : "s"}</div>
+              <div className="text-gray-500">
+                {activeHover.count} application{activeHover.count === 1 ? "" : "s"}
+              </div>
             </div>
           )}
         </div>
@@ -400,43 +513,12 @@ export function DashboardInsights({
         </div>
       </div>
 
-      <div className="lg:col-span-2 grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         <DonutChart title="Applications by Industry" data={industryData} />
         <DonutChart title="Applications by Company Size" data={companySizeData} />
       </div>
 
-      <div className="border border-gray-200 rounded-xl bg-white p-4 lg:row-span-2">
-        <p className="text-sm font-semibold text-gray-800 mb-3">Interview Progression</p>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-500">Reached 1st round</span>
-            <span className="font-semibold">
-              {roundMetrics.firstRoundRate.toFixed(1)}% ({roundMetrics.firstRoundCount})
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Reached 2nd round</span>
-            <span className="font-semibold">
-              {roundMetrics.secondRoundRate.toFixed(1)}% ({roundMetrics.secondRoundCount})
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Reached 3rd/final round</span>
-            <span className="font-semibold">
-              {roundMetrics.thirdRoundRate.toFixed(1)}% ({roundMetrics.thirdRoundCount})
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Window tracked</span>
-            <span className="font-semibold">{roundMetrics.total}</span>
-          </div>
-        </div>
-        <p className="text-[11px] text-gray-400 mt-3">
-          Derived from interview email chains sent from company domains.
-        </p>
-      </div>
-
-      <div className="lg:col-span-3 border border-gray-200 rounded-xl bg-white p-4">
+      <div className="border border-gray-200 rounded-xl bg-white p-4">
         <p className="text-sm font-semibold text-gray-800 mb-3">Stage Distribution</p>
         <div className="grid md:grid-cols-2 gap-2">
           {STAGE_GROUPS.map((stage) => {
@@ -446,7 +528,9 @@ export function DashboardInsights({
               <div key={stage.key} className="space-y-1">
                 <div className="flex items-center justify-between text-xs text-gray-600">
                   <span>{stage.label}</span>
-                  <span>{value} ({pct.toFixed(0)}%)</span>
+                  <span>
+                    {value} ({pct.toFixed(0)}%)
+                  </span>
                 </div>
                 <div className="h-2 rounded bg-gray-100 overflow-hidden">
                   <div

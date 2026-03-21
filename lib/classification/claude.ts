@@ -53,6 +53,7 @@ Return ONLY a valid JSON object with these exact fields:
 
 Rules:
 - If the email is NOT job-related, set emailType to "unknown" and isJobRelated to false
+- application_confirmation = employer/ATS acknowledgement of applying: e.g. "thank you for applying", "thank you for applying to {company}", "thank you for your application", "thank you for your application to {company}", "we received your application", "application received", similar variants
 - Extract the company name from the body or sender domain, not from ATS provider names
 - Extract the specific role/position title if mentioned
 - The stage should match the emailType logically`;

@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import {
   getApplicationsForUser,
+  getApplicationConfirmationInsightData,
   getDashboardStats,
   getInterviewRoundsByApplicationIds,
   getInterviewRoundMetrics,
@@ -16,13 +17,12 @@ import { SyncButton } from "@/components/dashboard/SyncButton";
 import { DashboardInsights } from "@/components/dashboard/DashboardInsights";
 import { ConnectGmailBanner } from "@/components/dashboard/ConnectGmailBanner";
 import { getDashboardOSPayload } from "@/lib/services/dashboard-metrics.service";
-import { ActionCenter } from "@/components/dashboard/ActionCenter";
+import { ActionCenterInsights } from "@/components/dashboard/ActionCenterInsights";
 import { FunnelMetrics } from "@/components/dashboard/FunnelMetrics";
 import { FollowupIntelligencePanel } from "@/components/dashboard/FollowupIntelligencePanel";
 import { GoalsPacingPanel } from "@/components/dashboard/GoalsPacingPanel";
 import { AttributionPanel } from "@/components/dashboard/AttributionPanel";
 import { TimeToEventPanel } from "@/components/dashboard/TimeToEventPanel";
-import { SmartInsightsPanel } from "@/components/dashboard/SmartInsightsPanel";
 import type { ApplicationStage } from "@/types";
 import type { DashboardOSPayload } from "@/lib/services/os-metrics.types";
 
@@ -253,32 +253,35 @@ npm run dev`}
 
   const isConnected = !!connectedAccount;
 
-  const [applications, insightApplications, stats, roundMetrics, osPayload] = isConnected
-    ? await Promise.all([
-        getApplicationsForUser(
-          ownerUserId,
-          selectedStages.length > 0 ? { stages: selectedStages } : undefined
-        ),
-        getApplicationsForUser(ownerUserId),
-        getDashboardStats(ownerUserId, selectedWindow),
-        getInterviewRoundMetrics(ownerUserId, selectedWindow, selectedStages),
-        getDashboardOSPayload(ownerUserId, selectedWindow),
-      ])
-    : [
-        [] as Awaited<ReturnType<typeof getApplicationsForUser>>,
-        [] as Awaited<ReturnType<typeof getApplicationsForUser>>,
-        emptyStats,
-        {
-          total: 0,
-          firstRoundCount: 0,
-          secondRoundCount: 0,
-          thirdRoundCount: 0,
-          firstRoundRate: 0,
-          secondRoundRate: 0,
-          thirdRoundRate: 0,
-        },
-        EMPTY_OS_PAYLOAD,
-      ];
+  const [applications, insightApplications, stats, roundMetrics, osPayload, inboxInsightData] =
+    isConnected
+      ? await Promise.all([
+          getApplicationsForUser(
+            ownerUserId,
+            selectedStages.length > 0 ? { stages: selectedStages } : undefined
+          ),
+          getApplicationsForUser(ownerUserId),
+          getDashboardStats(ownerUserId, selectedWindow),
+          getInterviewRoundMetrics(ownerUserId, selectedWindow, selectedStages),
+          getDashboardOSPayload(ownerUserId, selectedWindow),
+          getApplicationConfirmationInsightData(ownerUserId, selectedWindow),
+        ])
+      : [
+          [] as Awaited<ReturnType<typeof getApplicationsForUser>>,
+          [] as Awaited<ReturnType<typeof getApplicationsForUser>>,
+          emptyStats,
+          {
+            total: 0,
+            firstRoundCount: 0,
+            secondRoundCount: 0,
+            thirdRoundCount: 0,
+            firstRoundRate: 0,
+            secondRoundRate: 0,
+            thirdRoundRate: 0,
+          },
+          EMPTY_OS_PAYLOAD,
+          { perApplication: [] as { applicationId: string; dayKey: string }[] },
+        ];
 
   const interviewRoundByAppId = isConnected
     ? await getInterviewRoundsByApplicationIds(
@@ -382,21 +385,24 @@ npm run dev`}
       {/* Connect banner */}
       {!isConnected && <ConnectGmailBanner />}
 
-      {/* Executive top section */}
-      <SmartInsightsPanel insights={osPayload.insights} weightedPipelineScore={osPayload.weightedPipelineScore} />
+      {/* Executive top: today + insights (single section) */}
+      <ActionCenterInsights
+        actionCenter={osPayload.actionCenter}
+        insights={osPayload.insights}
+        weightedPipelineScore={osPayload.weightedPipelineScore}
+      />
       <DashboardInsights
         applications={serializedInsightApps}
         windowDays={selectedWindow}
         selectedStages={selectedStages}
-        roundMetrics={roundMetrics}
+        inboxInsightData={{ perApplication: inboxInsightData.perApplication }}
       />
       <StatsBar stats={stats} selectedStages={selectedStages} />
 
       {/* Operational execution sections */}
-      <ActionCenter actionCenter={osPayload.actionCenter} />
       <FunnelMetrics funnel={osPayload.funnel} />
       <FollowupIntelligencePanel followup={osPayload.followup} />
-      <GoalsPacingPanel goals={osPayload.goals} />
+      <GoalsPacingPanel goals={osPayload.goals} roundMetrics={roundMetrics} />
       <AttributionPanel attribution={osPayload.attribution} />
       <TimeToEventPanel timeToEvent={osPayload.timeToEvent} />
 

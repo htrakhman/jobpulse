@@ -44,7 +44,7 @@ export function StatsBar({ stats, selectedStages = [] }: StatsBarProps) {
       color: "text-blue-600",
       stage: "Applied" as ApplicationStage,
       info:
-        'Detected from application-confirmation patterns such as "thank you for applying", "application received", and similar confirmation subjects/body text.',
+        'Detected from application-confirmation patterns: "thank you for applying (to …)", "thank you for your application (to …)", "application received", "we received your application", and similar ATS auto-replies.',
     },
     {
       label: "Awaiting Response",

@@ -36,6 +36,11 @@ const COMPANY_PATTERNS = [
   // "Thank you for applying to [Company]"
   /thank you for applying to (.+?)[\.\,\!\?\n]/i,
   /thanks for applying to (.+?)[\.\,\!\?\n]/i,
+  // "Thank you for your application to [Company]" (very common in ATS auto-replies)
+  /thank you for your application to (.+?)[\.\,\!\?\n]/i,
+  /thanks for your application to (.+?)[\.\,\!\?\n]/i,
+  /thank you for your application with (.+?)[\.\,\!\?\n]/i,
+  /thank you for your application at (.+?)[\.\,\!\?\n]/i,
   /applying to (.+?)[\.\,\!\?\n]/i,
 ];
 
