@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { formatDistanceToNow } from "date-fns";
 import {
   Table,
   TableBody,
@@ -12,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ClientRelativeTime } from "@/components/ui/client-relative-time";
 import { StageBadge } from "./StageBadge";
 import type { ApplicationStage } from "@/types";
 import type { DashboardOSPayload } from "@/lib/services/os-metrics.types";
@@ -337,7 +337,7 @@ export function ApplicationTable({ applications, windowDays }: ApplicationTableP
                 {app.contactPosition && <p className="text-[11px] text-gray-400">{app.contactPosition}</p>}
               </TableCell>
               <TableCell className="text-xs text-gray-500">
-                {formatDistanceToNow(new Date(app.lastActivityAt), { addSuffix: true })}
+                <ClientRelativeTime iso={app.lastActivityAt} />
               </TableCell>
             </TableRow>
           ))}

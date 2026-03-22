@@ -29,7 +29,13 @@ AI-powered job application tracker. Connects to Gmail, classifies job emails aut
 npm install
 ```
 
-### 3. Configure environment variables
+### 3. Database schema (automatic on dev)
+
+Whenever you run **`npm run dev`**, the **`predev`** script runs **`prisma generate`** and **`prisma db push`**, so your Neon (or local) database stays aligned with `schema.prisma`—no manual migrate step for local work.
+
+To sync the DB without starting the app: **`npm run db:sync`**.
+
+### 4. Configure environment variables
 
 Copy the example file and fill in values (keep secrets in `.env.local` only—never commit it):
 
@@ -51,7 +57,7 @@ Required variables:
 | `DATABASE_URL` | PostgreSQL connection string |
 | `NEXT_PUBLIC_APP_URL` | App base URL (e.g. `http://localhost:3000`) |
 
-### 4. Set up Google OAuth
+### 5. Set up Google OAuth
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com)
 2. Enable **Gmail API** and **Cloud Pub/Sub API**
@@ -62,23 +68,24 @@ Required variables:
 7. Create a Pub/Sub subscription (Push) pointing to `https://yourdomain.com/api/gmail/webhook`
    - For local dev, use [ngrok](https://ngrok.com) to expose localhost
 
-### 5. Set up the database
+### 6. Set up the database (optional manual step)
+
+If you use **`npm run dev`**, schema is applied automatically via **`predev`**. Otherwise:
 
 ```bash
-# Run Prisma migrations
-npx prisma migrate dev --name init
-
-# Or push schema directly (no migration history)
-npx prisma db push
+npm run db:sync
+# or: npx prisma migrate dev --name init
 ```
 
-### 6. Run locally
+### 7. Run locally
 
 ```bash
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+**Dev server:** `npm run dev` uses **Webpack** by default so Tailwind/PostCSS resolves reliably when the repo lives under a path like `cursor projects/`. For Turbopack (faster, experimental here), use **`npm run dev:turbo`** — `next.config.ts` includes `turbopack.resolveAlias` helpers for `tailwindcss`. If you still see `Can't resolve 'tailwindcss'`, remove any stray **`package-lock.json`** in parent folders that confuse the workspace root.
 
 ---
 
@@ -87,7 +94,7 @@ Open [http://localhost:3000](http://localhost:3000).
 1. User signs up via Clerk
 2. User clicks "Connect Gmail" → Google OAuth flow
 3. System calls `gmail.users.watch()` to set up Pub/Sub notifications
-4. User clicks "Sync inbox" → batch scan of last 180 days
+4. **Refresh** uses Gmail’s **History API** (new mail only, usually seconds); if that’s unavailable, a **narrow date-bounded** search — not a full inbox walk. **Load mail to Xd** only fetches the **gap** when widening the dashboard window. **Deep rescan** is the slow full walk (use rarely)
 5. Each email is classified:
    - **Deterministic rules** first (subject/body pattern matching)
    - **Claude** fallback for unmatched emails
@@ -144,7 +151,7 @@ app/
   (dashboard)/applications/[id] Application detail + timeline
   api/gmail/connect            Gmail OAuth initiation
   api/gmail/connect/callback   OAuth callback + token storage
-  api/gmail/sync               Trigger full inbox scan
+  api/gmail/sync               Incremental refresh, window gap, or deep rescan
   api/gmail/webhook            Pub/Sub push endpoint
   api/applications             List/filter applications
   api/follow-ups               Follow-up suggestion management

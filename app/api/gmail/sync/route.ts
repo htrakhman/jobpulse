@@ -1,7 +1,11 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { syncInbox } from "@/lib/gmail/sync";
+import {
+  syncQuick,
+  syncInboxFull,
+  syncWindowGap,
+} from "@/lib/gmail/sync";
 import { reconcileInterviewInvites } from "@/lib/services/application.service";
 import { recomputeContactGraphForUser } from "@/lib/services/contact-graph.service";
 import { generateFollowUpSuggestions } from "@/lib/services/followup.service";
@@ -9,6 +13,45 @@ import { backfillOperationalDataForUser } from "@/lib/services/backfill.service"
 
 const ALLOWED_WINDOWS = new Set([30, 90, 180, 365]);
 const FULL_RESCAN_DAYS = 3650;
+
+async function runPostSyncPipeline(
+  ownerUserId: string,
+  daysBack: number,
+  fullRescan: boolean,
+  hadNewMail: boolean
+): Promise<number> {
+  const runHeavy = fullRescan || hadNewMail;
+  let inviteReconciled = 0;
+
+  if (runHeavy) {
+    inviteReconciled = await reconcileInterviewInvites(ownerUserId, daysBack);
+    await generateFollowUpSuggestions(ownerUserId);
+  }
+
+  setTimeout(() => {
+    if (!runHeavy) {
+      void reconcileInterviewInvites(ownerUserId, daysBack).catch((e) =>
+        console.error("[api/gmail/sync] deferred reconcile failed:", e)
+      );
+      void generateFollowUpSuggestions(ownerUserId).catch((e) =>
+        console.error("[api/gmail/sync] deferred follow-ups failed:", e)
+      );
+    }
+    void recomputeContactGraphForUser(ownerUserId, {
+      daysBack,
+      limit: fullRescan ? 80 : 50,
+    }).catch((recomputeErr) =>
+      console.error("[api/gmail/sync] contact graph recompute failed:", recomputeErr)
+    );
+    void backfillOperationalDataForUser(ownerUserId, {
+      limit: fullRescan ? 300 : hadNewMail ? 120 : 40,
+    }).catch((backfillErr) =>
+      console.error("[api/gmail/sync] operational backfill failed:", backfillErr)
+    );
+  }, 0);
+
+  return inviteReconciled;
+}
 
 export async function POST(request: Request) {
   const { userId } = await auth();
@@ -20,14 +63,20 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => ({}))) as {
       daysBack?: number;
       fullRescan?: boolean;
+      /** When expanding dashboard window (e.g. scanned 90d, now 180d), only fetch the gap. */
+      previousScannedDays?: number;
     };
     const fullRescan = body?.fullRescan === true;
     const requestedWindow = Number(body?.daysBack);
     const daysBack = fullRescan
       ? FULL_RESCAN_DAYS
       : ALLOWED_WINDOWS.has(requestedWindow)
-      ? requestedWindow
-      : 180;
+        ? requestedWindow
+        : 180;
+    const previousScanned =
+      typeof body.previousScannedDays === "number" && body.previousScannedDays > 0
+        ? body.previousScannedDays
+        : null;
 
     if (!prisma) {
       return NextResponse.json({ error: "Database not configured" }, { status: 500 });
@@ -44,23 +93,44 @@ export async function POST(request: Request) {
       }
     }
 
-    const result = await syncInbox(ownerUserId, {
-      daysBack,
-      maxMessages: fullRescan ? 8000 : undefined,
-    });
-    const inviteReconciled = await reconcileInterviewInvites(ownerUserId, daysBack);
-    await generateFollowUpSuggestions(ownerUserId);
-    setTimeout(() => {
-      void recomputeContactGraphForUser(ownerUserId, {
+    let result: Awaited<ReturnType<typeof syncQuick>>;
+
+    if (fullRescan) {
+      result = await syncInboxFull(ownerUserId, daysBack, 8000);
+    } else if (
+      previousScanned != null &&
+      daysBack > previousScanned &&
+      ALLOWED_WINDOWS.has(previousScanned)
+    ) {
+      result = await syncWindowGap(ownerUserId, daysBack, previousScanned);
+      await prisma.user.updateMany({
+        where: { id: ownerUserId },
+        data: { initialScanRangeDays: daysBack },
+      });
+    } else {
+      const [userRow, acct] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: ownerUserId },
+          select: { lastInboxSyncedAt: true },
+        }),
+        prisma.connectedAccount.findUnique({
+          where: { userId: ownerUserId },
+          select: { historyId: true },
+        }),
+      ]);
+      result = await syncQuick(ownerUserId, {
         daysBack,
-        limit: 80,
-      }).catch((recomputeErr) =>
-        console.error("[api/gmail/sync] contact graph recompute failed:", recomputeErr)
-      );
-      void backfillOperationalDataForUser(ownerUserId, {
-        limit: fullRescan ? 300 : 120,
-      }).catch((backfillErr) =>
-        console.error("[api/gmail/sync] operational backfill failed:", backfillErr)
+        lastInboxSyncedAt: userRow?.lastInboxSyncedAt ?? null,
+        historyId: acct?.historyId ?? null,
+      });
+    }
+
+    const hadNewMail = result.processed > 0 || result.applications > 0;
+    // Never block the HTTP response on follow-ups / reconcile / graph — if those throw, the client
+    // used to get 500 even though inbox sync + lastInboxSyncedAt already succeeded.
+    setTimeout(() => {
+      void runPostSyncPipeline(ownerUserId, daysBack, fullRescan, hadNewMail).catch((e) =>
+        console.error("[api/gmail/sync] post-sync pipeline failed:", e)
       );
     }, 0);
 
@@ -68,7 +138,8 @@ export async function POST(request: Request) {
       success: true,
       fullRescan,
       daysBack,
-      inviteReconciled,
+      strategy: result.strategy ?? (fullRescan ? "full_list" : "unknown"),
+      inviteReconciled: null,
       ...result,
     });
   } catch (err) {

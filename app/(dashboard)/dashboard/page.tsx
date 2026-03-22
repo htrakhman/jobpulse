@@ -251,6 +251,26 @@ npm run dev`}
 
   const isConnected = !!connectedAccount;
 
+  // Stale OAuth error in URL after Gmail is connected — strip it so logs/address bar stay clean.
+  const oauthErrorsClearWhenConnected = new Set([
+    "gmail_connect_failed",
+    "redirect_uri_mismatch",
+    "gmail_access_denied",
+    "google_oauth_missing",
+  ]);
+  if (isConnected && params.error && oauthErrorsClearWhenConnected.has(params.error)) {
+    const sp = new URLSearchParams();
+    if (selectedWindow !== 30) sp.set("window", String(selectedWindow));
+    if (selectedStages.length > 0) sp.set("stages", selectedStages.join(","));
+    if (params.connected) sp.set("connected", params.connected);
+    if (params.scan) sp.set("scan", params.scan);
+    if (params.range) sp.set("range", params.range);
+    if (params.applications) sp.set("applications", params.applications);
+    if (params.gmailPrompted === "1") sp.set("gmailPrompted", "1");
+    const q = sp.toString();
+    redirect(q ? `/dashboard?${q}` : "/dashboard");
+  }
+
   const [applications, insightApplications, stats, roundMetrics, osPayload, inboxInsightData] =
     isConnected
       ? await Promise.all([

@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
+import { ClientRelativeTime } from "@/components/ui/client-relative-time";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DashboardOSPayload } from "@/lib/services/os-metrics.types";
 import { StageBadge } from "./StageBadge";
@@ -81,7 +81,7 @@ export function FunnelMetrics({ funnel }: FunnelMetricsProps) {
                                       <StageBadge stage={app.stage} />
                                     </td>
                                     <td className="px-3 py-2 text-gray-500">
-                                      {formatDistanceToNow(new Date(app.lastActivityAt), { addSuffix: true })}
+                                      <ClientRelativeTime iso={app.lastActivityAt} />
                                     </td>
                                   </tr>
                                 ))}
