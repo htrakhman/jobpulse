@@ -14,12 +14,30 @@ const WINDOW_OPTIONS = [
 interface SyncButtonProps {
   selectedWindow: number;
   scannedWindow: number;
+  /** ISO timestamp from last successful inbox sync (server). */
+  lastInboxSyncedAtIso: string | null;
 }
 
-export function SyncButton({ selectedWindow, scannedWindow }: SyncButtonProps) {
+function formatLastSync(iso: string | null): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "medium",
+    });
+  } catch {
+    return "—";
+  }
+}
+
+export function SyncButton({ selectedWindow, scannedWindow, lastInboxSyncedAtIso }: SyncButtonProps) {
   const [syncing, setSyncing] = useState(false);
   const [syncMode, setSyncMode] = useState<"window" | "full">("window");
   const [result, setResult] = useState<string | null>(null);
+  const [clientLastSyncIso, setClientLastSyncIso] = useState<string | null>(null);
+  const displayLastSyncIso = clientLastSyncIso ?? lastInboxSyncedAtIso;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -60,6 +78,9 @@ export function SyncButton({ selectedWindow, scannedWindow }: SyncButtonProps) {
             }`
           );
         }
+        if (typeof data.lastInboxSyncedAt === "string") {
+          setClientLastSyncIso(data.lastInboxSyncedAt);
+        }
         router.refresh();
       } else {
         setResult("Sync failed");
@@ -92,7 +113,8 @@ export function SyncButton({ selectedWindow, scannedWindow }: SyncButtonProps) {
           </div>
         </div>
       )}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col items-end gap-0">
+      <div className="flex flex-wrap items-center justify-end gap-3">
       {result && (
         <span className="text-sm text-gray-500 hidden md:inline">{result}</span>
       )}
@@ -137,9 +159,24 @@ export function SyncButton({ selectedWindow, scannedWindow }: SyncButtonProps) {
       >
         {syncing && syncMode === "full" ? "Rescanning..." : "Refresh whole inbox"}
       </Button>
-      <span className="hidden xl:inline text-xs text-gray-400">
+      <span className="hidden lg:inline text-xs text-gray-400 whitespace-nowrap">
         Scanned so far: {scannedWindow}d
       </span>
+      <span
+        className="hidden md:inline text-xs text-gray-500 max-w-[220px] lg:max-w-none truncate lg:whitespace-nowrap"
+        title={displayLastSyncIso ? `Last inbox sync (local time): ${formatLastSync(displayLastSyncIso)}` : undefined}
+      >
+        Last refresh:{" "}
+        <time dateTime={displayLastSyncIso ?? undefined}>{formatLastSync(displayLastSyncIso)}</time>
+      </span>
+      </div>
+      <p
+        className="md:hidden text-xs text-gray-500 mt-1.5 text-right w-full"
+        title={displayLastSyncIso ? `Last inbox sync (local time): ${formatLastSync(displayLastSyncIso)}` : undefined}
+      >
+        Last refresh:{" "}
+        <time dateTime={displayLastSyncIso ?? undefined}>{formatLastSync(displayLastSyncIso)}</time>
+      </p>
       </div>
     </>
   );

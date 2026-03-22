@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DashboardOSPayload } from "@/lib/services/os-metrics.types";
+import { EditGoalsDialog } from "@/components/dashboard/EditGoalsDialog";
 
 interface InterviewRoundMetrics {
   total: number;
@@ -20,11 +21,24 @@ export function GoalsPacingPanel({ goals, roundMetrics }: GoalsPacingPanelProps)
   return (
     <Card className="border border-gray-200 shadow-none mb-4">
       <CardHeader className="border-b border-gray-100 pb-3">
-        <CardTitle className="text-base">Goals & interview pipeline</CardTitle>
-        <p className="text-xs text-gray-500 font-normal mt-1">
-          Weekly pacing plus how far applications progress in interview rounds (from company-domain
-          email threads).
-        </p>
+        <div className="flex flex-row items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-base">Goals & interview pipeline</CardTitle>
+            <p className="text-xs text-gray-500 font-normal mt-1">
+              Weekly pacing plus how far applications progress in interview rounds (from
+              company-domain email threads).
+            </p>
+          </div>
+          <EditGoalsDialog
+            initialGoals={{
+              dailyApplicationGoal: goals.dailyApplicationGoal,
+              weeklyApplicationGoal: goals.weeklyApplicationGoal,
+              weeklyInterviewGoal: goals.weeklyInterviewGoal,
+              weeklyNetworkingGoal: goals.weeklyNetworkingGoal,
+              weeklyFollowupGoal: goals.weeklyFollowupGoal,
+            }}
+          />
+        </div>
       </CardHeader>
       <CardContent className="pt-4 space-y-5">
         <div className="grid gap-3 md:grid-cols-2">

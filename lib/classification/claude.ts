@@ -1,7 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ClassificationResult, ApplicationStage, EmailType } from "@/types";
 
-const client = new Anthropic();
+/** Default Haiku for classification; override with ANTHROPIC_MODEL in env. */
+const DEFAULT_CLAUDE_MODEL = "claude-haiku-4-5";
+
+function getAnthropicClient(): Anthropic | null {
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) return null;
+  return new Anthropic({ apiKey });
+}
 
 const VALID_EMAIL_TYPES: EmailType[] = [
   "application_confirmation",
@@ -33,6 +40,13 @@ export async function classifyWithClaude(params: {
 }): Promise<ClassificationResult | null> {
   const { subject, fromName, fromEmail, bodySnippet } = params;
 
+  const client = getAnthropicClient();
+  if (!client) {
+    return null;
+  }
+
+  const model = process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_CLAUDE_MODEL;
+
   const prompt = `You are an expert at analyzing job application emails. Analyze this email and return a JSON object.
 
 Email details:
@@ -60,7 +74,7 @@ Rules:
 
   try {
     const response = await client.messages.create({
-      model: "claude-3-5-haiku-20241022",
+      model,
       max_tokens: 300,
       messages: [{ role: "user", content: prompt }],
     });
@@ -94,7 +108,11 @@ Rules:
       confidence: "ai",
     };
   } catch (err) {
-    console.error("[Claude classifier] Error:", err);
+    // Avoid flooding logs during bulk Gmail sync (one line per failure is enough).
+    const message = err instanceof Error ? err.message : String(err);
+    if (!message.includes("authentication") && !message.includes("apiKey")) {
+      console.error("[Claude classifier] Error:", err);
+    }
     return null;
   }
 }

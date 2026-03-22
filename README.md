@@ -31,10 +31,10 @@ npm install
 
 ### 3. Configure environment variables
 
-Copy `.env.local` and fill in all values:
+Copy the example file and fill in values (keep secrets in `.env.local` only—never commit it):
 
 ```bash
-cp .env.local .env.local
+cp .env.example .env.local
 ```
 
 Required variables:
@@ -46,7 +46,8 @@ Required variables:
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
 | `GOOGLE_PUBSUB_TOPIC` | Full Pub/Sub topic path |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `ANTHROPIC_API_KEY` | Anthropic API key (optional: if unset, only rule-based classification runs—no errors during sync) |
+| `ANTHROPIC_MODEL` | Optional override for Claude model id (default: `claude-haiku-4-5`) |
 | `DATABASE_URL` | PostgreSQL connection string |
 | `NEXT_PUBLIC_APP_URL` | App base URL (e.g. `http://localhost:3000`) |
 

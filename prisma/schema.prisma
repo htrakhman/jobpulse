@@ -97,6 +97,8 @@ model User {
   initialScanStartedAt   DateTime?
   initialScanCompletedAt DateTime?
   initialScanRangeDays   Int?
+  /// Last successful full/window inbox sync (manual refresh or OAuth connect initial scan).
+  lastInboxSyncedAt      DateTime?
   connectedAccount ConnectedAccount?
   applications     Application[]
   contacts         ApplicationContact[]

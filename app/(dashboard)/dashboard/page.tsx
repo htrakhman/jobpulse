@@ -1,5 +1,4 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +20,6 @@ import { ActionCenterInsights } from "@/components/dashboard/ActionCenterInsight
 import { FunnelMetrics } from "@/components/dashboard/FunnelMetrics";
 import { FollowupIntelligencePanel } from "@/components/dashboard/FollowupIntelligencePanel";
 import { GoalsPacingPanel } from "@/components/dashboard/GoalsPacingPanel";
-import { AttributionPanel } from "@/components/dashboard/AttributionPanel";
 import { TimeToEventPanel } from "@/components/dashboard/TimeToEventPanel";
 import type { ApplicationStage } from "@/types";
 import type { DashboardOSPayload } from "@/lib/services/os-metrics.types";
@@ -365,7 +363,15 @@ npm run dev`}
           </p>
         </div>
         {isConnected && (
-          <SyncButton selectedWindow={selectedWindow} scannedWindow={scannedWindow} />
+          <SyncButton
+            selectedWindow={selectedWindow}
+            scannedWindow={scannedWindow}
+            lastInboxSyncedAtIso={
+              user?.lastInboxSyncedAt?.toISOString() ??
+              user?.initialScanCompletedAt?.toISOString() ??
+              null
+            }
+          />
         )}
       </div>
 
@@ -403,25 +409,7 @@ npm run dev`}
       <FunnelMetrics funnel={osPayload.funnel} />
       <FollowupIntelligencePanel followup={osPayload.followup} />
       <GoalsPacingPanel goals={osPayload.goals} roundMetrics={roundMetrics} />
-      <AttributionPanel attribution={osPayload.attribution} />
       <TimeToEventPanel timeToEvent={osPayload.timeToEvent} />
-
-      {applications.length > 0 && (
-        <div className="mb-6 border border-blue-200 bg-blue-50 rounded-xl p-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-blue-900">People Enrichment (Clay-style)</p>
-            <p className="text-xs text-blue-700 mt-0.5">
-              Open any application and click <strong>Find People</strong> to search and enrich people.
-            </p>
-          </div>
-          <Link
-            href={`/applications/${applications[0].id}`}
-            className="text-sm bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 whitespace-nowrap"
-          >
-            Open enrichment
-          </Link>
-        </div>
-      )}
 
       {/* Filter + Table */}
       <div className="flex items-center justify-between mb-4">

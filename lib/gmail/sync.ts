@@ -16,6 +16,8 @@ export interface SyncResult {
   classified: number;
   applications: number;
   errors: number;
+  /** Set when a full inbox listing sync finishes successfully. */
+  lastInboxSyncedAt?: string;
 }
 
 export async function syncInbox(
@@ -97,7 +99,17 @@ export async function syncInbox(
     });
   }
 
-  return result;
+  const syncedAt = new Date();
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { lastInboxSyncedAt: syncedAt },
+    });
+  } catch (e) {
+    console.error("[sync] Could not persist lastInboxSyncedAt:", e);
+  }
+
+  return { ...result, lastInboxSyncedAt: syncedAt.toISOString() };
 }
 
 export async function syncFromHistory(userId: string, historyId: string): Promise<SyncResult> {
