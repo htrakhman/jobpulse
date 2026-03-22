@@ -12,6 +12,15 @@ function parseIsoMs(iso: string | null | undefined): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
+function numField(v: unknown, fallback = 0): number {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+}
+
 function newestIso(
   ...candidates: (string | null | undefined)[]
 ): string | null {
@@ -129,26 +138,28 @@ export function SyncButton({ selectedWindow, scannedWindow, lastInboxSyncedAtIso
         setResult(`Sync failed: ${err}`);
         return;
       }
-      if (data.success) {
+      if (data.success === true) {
         const strat = typeof data.strategy === "string" ? data.strategy : "";
+        const appCount = numField(data.applications);
+        const daysBackShown = numField(data.daysBack, selectedWindow);
         let msg: string;
-        if (data.fullRescan) {
-          msg = `Deep rescan complete: ${data.applications} application${
-            data.applications !== 1 ? "s" : ""
+        if (data.fullRescan === true) {
+          msg = `Deep rescan complete: ${appCount} application${
+            appCount !== 1 ? "s" : ""
           } processed`;
         } else if (mode === "window") {
-          msg = `Synced older mail (${scannedWindow}d→${selectedWindow}d): ${data.applications} application${
-            data.applications !== 1 ? "s" : ""
+          msg = `Synced older mail (${scannedWindow}d→${selectedWindow}d): ${appCount} application${
+            appCount !== 1 ? "s" : ""
           }`;
         } else if (strat === "gmail_history" || strat === "delta_query") {
-          const n = data.applications ?? 0;
+          const n = appCount;
           msg =
             n > 0
               ? `Up to date — ${n} new application update${n !== 1 ? "s" : ""} (${strat === "gmail_history" ? "instant sync" : "quick scan"})`
               : `Up to date — no new job mail (${strat === "gmail_history" ? "instant sync" : "quick scan"})`;
         } else {
-          msg = `Scanned last ${data.daysBack} days: ${data.applications} application${
-            data.applications !== 1 ? "s" : ""
+          msg = `Scanned last ${daysBackShown} days: ${appCount} application${
+            appCount !== 1 ? "s" : ""
           }`;
         }
         if (data.lastInboxSyncedAtPersisted === false) {
