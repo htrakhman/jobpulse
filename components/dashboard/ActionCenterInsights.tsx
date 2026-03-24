@@ -4,7 +4,6 @@ import type { DashboardOSPayload } from "@/lib/services/os-metrics.types";
 interface ActionCenterInsightsProps {
   actionCenter: DashboardOSPayload["actionCenter"];
   insights: DashboardOSPayload["insights"];
-  weightedPipelineScore: number;
 }
 
 const PRIORITY_CLASS = {
@@ -23,26 +22,15 @@ const SEVERITY_CLASS = {
 export function ActionCenterInsights({
   actionCenter,
   insights,
-  weightedPipelineScore,
 }: ActionCenterInsightsProps) {
   return (
     <Card className="border border-gray-200 shadow-none mb-4 overflow-hidden">
       <CardHeader className="border-b border-gray-100 bg-gray-50/50 pb-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle className="text-lg">Today</CardTitle>
-            <p className="text-sm text-gray-500 mt-1 font-normal">
-              Next moves and signals from your pipeline
-            </p>
-          </div>
-          <div className="flex items-baseline gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 shrink-0">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              Pipeline score
-            </span>
-            <span className="text-xl font-semibold text-gray-900 tabular-nums">
-              {weightedPipelineScore}
-            </span>
-          </div>
+        <div>
+          <CardTitle className="text-lg">Today</CardTitle>
+          <p className="text-sm text-gray-500 mt-1 font-normal">
+            Next moves and signals from your pipeline
+          </p>
         </div>
       </CardHeader>
       <CardContent className="pt-5 space-y-6">

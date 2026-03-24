@@ -132,9 +132,10 @@ export function extractSignals(email: ParsedEmail): ExtractedSignals {
     }
   }
 
-  // Extract company from body
+  // Extract company from body and subject (ATS receipts often put the company only in the subject)
+  const subjectAndBody = `${subject}\n${bodyText}`;
   for (const pattern of COMPANY_PATTERNS) {
-    const match = bodyText.match(pattern);
+    const match = subjectAndBody.match(pattern);
     if (match?.[1]) {
       const candidate = cleanExtracted(match[1]);
       if (isValidCompany(candidate)) {

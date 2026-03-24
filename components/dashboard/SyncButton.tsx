@@ -64,9 +64,12 @@ function formatLastSync(iso: string | null): string {
   }
 }
 
+/**
+ * Single Refresh control: incremental inbox sync from the last imported message
+ * (Gmail History API when possible, otherwise a bounded delta — same as former “quick” sync).
+ */
 export function SyncButton({ selectedWindow, scannedWindow, lastInboxSyncedAtIso }: SyncButtonProps) {
   const [syncing, setSyncing] = useState(false);
-  const [syncMode, setSyncMode] = useState<"quick" | "window" | "full">("quick");
   const [result, setResult] = useState<string | null>(null);
   const [clientLastSyncIso, setClientLastSyncIso] = useState<string | null>(null);
   const [storedLastSyncIso, setStoredLastSyncIso] = useState<string | null>(null);
@@ -80,7 +83,6 @@ export function SyncButton({ selectedWindow, scannedWindow, lastInboxSyncedAtIso
     }
   }, []);
 
-  // Server caught up after a prior client-only timestamp
   useEffect(() => {
     if (!lastInboxSyncedAtIso || !storedLastSyncIso) return;
     if (parseIsoMs(lastInboxSyncedAtIso) >= parseIsoMs(storedLastSyncIso)) {
@@ -100,7 +102,6 @@ export function SyncButton({ selectedWindow, scannedWindow, lastInboxSyncedAtIso
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const needsRescan = selectedWindow > scannedWindow;
 
   function handleWindowChange(nextWindow: number) {
     const params = new URLSearchParams(searchParams.toString());
@@ -108,26 +109,17 @@ export function SyncButton({ selectedWindow, scannedWindow, lastInboxSyncedAtIso
     router.push(`${pathname}?${params.toString()}`);
   }
 
-  async function handleSync(mode: "quick" | "window" | "full") {
+  async function handleRefresh() {
     setSyncing(true);
-    setSyncMode(mode);
     setResult(null);
     try {
-      const fullRescan = mode === "full";
       const res = await fetch("/api/gmail/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          fullRescan
-            ? { fullRescan: true, daysBack: selectedWindow }
-            : mode === "window"
-              ? {
-                  daysBack: selectedWindow,
-                  fullRescan: false,
-                  previousScannedDays: scannedWindow,
-                }
-              : { daysBack: selectedWindow, fullRescan: false }
-        ),
+        body: JSON.stringify({
+          daysBack: selectedWindow,
+          fullRescan: false,
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       if (!res.ok) {
@@ -143,15 +135,7 @@ export function SyncButton({ selectedWindow, scannedWindow, lastInboxSyncedAtIso
         const appCount = numField(data.applications);
         const daysBackShown = numField(data.daysBack, selectedWindow);
         let msg: string;
-        if (data.fullRescan === true) {
-          msg = `Deep rescan complete: ${appCount} application${
-            appCount !== 1 ? "s" : ""
-          } processed`;
-        } else if (mode === "window") {
-          msg = `Synced older mail (${scannedWindow}d→${selectedWindow}d): ${appCount} application${
-            appCount !== 1 ? "s" : ""
-          }`;
-        } else if (strat === "gmail_history" || strat === "delta_query") {
+        if (strat === "gmail_history" || strat === "delta_query") {
           const n = appCount;
           msg =
             n > 0
@@ -177,7 +161,6 @@ export function SyncButton({ selectedWindow, scannedWindow, lastInboxSyncedAtIso
           }
         }
         router.refresh();
-        // Drop stale OAuth error query so the banner/URL don't imply Gmail is still broken.
         if (searchParams.get("error")) {
           const p = new URLSearchParams(searchParams.toString());
           p.delete("error");
@@ -203,18 +186,11 @@ export function SyncButton({ selectedWindow, scannedWindow, lastInboxSyncedAtIso
               <span className="inline-block w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
               <div>
                 <p className="text-sm font-semibold text-gray-900">
-                  {syncMode === "full"
-                    ? "Deep scanning your inbox..."
-                    : syncMode === "window"
-                      ? "Fetching older messages..."
-                      : "Checking for new mail..."}
+                  Checking for new mail…
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {syncMode === "full"
-                    ? "This can take several minutes for large mailboxes."
-                    : syncMode === "window"
-                      ? "Only loading the new date range — not the whole inbox."
-                      : "Uses Gmail’s change feed when possible — usually a few seconds."}
+                  Syncing from your last imported message (Gmail History when
+                  possible — usually a few seconds).
                 </p>
               </div>
             </div>
@@ -222,85 +198,66 @@ export function SyncButton({ selectedWindow, scannedWindow, lastInboxSyncedAtIso
         </div>
       )}
       <div className="flex flex-col items-end gap-0">
-      <div className="flex flex-wrap items-center justify-end gap-3">
-      {result && (
-        <span className="text-sm text-gray-500 hidden md:inline">{result}</span>
-      )}
-      <label className="text-xs text-gray-500 hidden md:flex items-center gap-2">
-        Date window
-        <select
-          value={selectedWindow}
-          onChange={(e) => handleWindowChange(Number(e.target.value))}
-          className="border border-gray-300 rounded-md px-2 py-1 text-xs bg-white text-gray-700"
-          disabled={syncing}
-        >
-          {WINDOW_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <Button
-        onClick={() => handleSync("quick")}
-        disabled={syncing}
-        size="sm"
-        className="bg-gray-900 hover:bg-gray-700 text-white"
-      >
-        {syncing && syncMode === "quick" ? "Refreshing..." : "Refresh"}
-      </Button>
-      {needsRescan && (
-        <Button
-          onClick={() => handleSync("window")}
-          disabled={syncing}
-          variant="outline"
-          size="sm"
-          className="border-gray-300"
-        >
-          {syncing && syncMode === "window" ? (
-            <span className="flex items-center gap-2">
-              <span className="inline-block w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-              Syncing…
-            </span>
-          ) : (
-            `Load mail to ${selectedWindow}d`
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {result && (
+            <span className="text-sm text-gray-500 hidden md:inline">{result}</span>
           )}
-        </Button>
-      )}
-      <Button
-        onClick={() => handleSync("full")}
-        disabled={syncing}
-        variant="outline"
-        size="sm"
-        className="border-gray-400 text-gray-700"
-      >
-        {syncing && syncMode === "full" ? "Scanning…" : "Deep rescan (slow)"}
-      </Button>
-      <span className="hidden lg:inline text-xs text-gray-400 whitespace-nowrap">
-        Scanned so far: {scannedWindow}d
-      </span>
-      <span
-        className="hidden md:inline text-xs text-gray-500 max-w-[220px] lg:max-w-none truncate lg:whitespace-nowrap"
-        title={displayLastSyncIso ? `Last inbox sync (local time): ${formatLastSync(displayLastSyncIso)}` : undefined}
-      >
-        Last refresh:{" "}
-        <time
-          dateTime={displayLastSyncIso ?? undefined}
-          suppressHydrationWarning
+          <label className="text-xs text-gray-500 hidden md:flex items-center gap-2">
+            Date window
+            <select
+              value={selectedWindow}
+              onChange={(e) => handleWindowChange(Number(e.target.value))}
+              className="border border-gray-300 rounded-md px-2 py-1 text-xs bg-white text-gray-700"
+              disabled={syncing}
+            >
+              {WINDOW_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            onClick={handleRefresh}
+            disabled={syncing}
+            size="sm"
+            className="bg-gray-900 hover:bg-gray-700 text-white"
+          >
+            {syncing ? "Refreshing…" : "Refresh"}
+          </Button>
+          <span className="hidden lg:inline text-xs text-gray-400 whitespace-nowrap">
+            Scanned so far: {scannedWindow}d
+          </span>
+          <span
+            className="hidden md:inline text-xs text-gray-500 max-w-[220px] lg:max-w-none truncate lg:whitespace-nowrap"
+            title={
+              displayLastSyncIso
+                ? `Last inbox sync (local time): ${formatLastSync(displayLastSyncIso)}`
+                : undefined
+            }
+          >
+            Last refresh:{" "}
+            <time
+              dateTime={displayLastSyncIso ?? undefined}
+              suppressHydrationWarning
+            >
+              {formatLastSync(displayLastSyncIso)}
+            </time>
+          </span>
+        </div>
+        <p
+          className="md:hidden text-xs text-gray-500 mt-1.5 text-right w-full"
+          title={
+            displayLastSyncIso
+              ? `Last inbox sync (local time): ${formatLastSync(displayLastSyncIso)}`
+              : undefined
+          }
         >
-          {formatLastSync(displayLastSyncIso)}
-        </time>
-      </span>
-      </div>
-      <p
-        className="md:hidden text-xs text-gray-500 mt-1.5 text-right w-full"
-        title={displayLastSyncIso ? `Last inbox sync (local time): ${formatLastSync(displayLastSyncIso)}` : undefined}
-      >
-        Last refresh:{" "}
-        <time dateTime={displayLastSyncIso ?? undefined} suppressHydrationWarning>
-          {formatLastSync(displayLastSyncIso)}
-        </time>
-      </p>
+          Last refresh:{" "}
+          <time dateTime={displayLastSyncIso ?? undefined} suppressHydrationWarning>
+            {formatLastSync(displayLastSyncIso)}
+          </time>
+        </p>
       </div>
     </>
   );

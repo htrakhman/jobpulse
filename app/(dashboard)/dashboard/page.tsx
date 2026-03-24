@@ -1,6 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { unstable_noStore as noStore } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import {
   getApplicationsForUser,
@@ -16,7 +17,7 @@ import { SyncButton } from "@/components/dashboard/SyncButton";
 import { DashboardInsights } from "@/components/dashboard/DashboardInsights";
 import { ConnectGmailBanner } from "@/components/dashboard/ConnectGmailBanner";
 import { getDashboardOSPayload } from "@/lib/services/dashboard-metrics.service";
-import { ActionCenterInsights } from "@/components/dashboard/ActionCenterInsights";
+import { SimplifiedOverview } from "@/components/dashboard/SimplifiedOverview";
 import { FunnelMetrics } from "@/components/dashboard/FunnelMetrics";
 import { FollowupIntelligencePanel } from "@/components/dashboard/FollowupIntelligencePanel";
 import { GoalsPacingPanel } from "@/components/dashboard/GoalsPacingPanel";
@@ -28,7 +29,6 @@ const VALID_STAGES: ApplicationStage[] = [
   "Applied", "Waiting", "Scheduling", "Interviewing", "Assessment", "Offer", "Rejected", "Closed",
 ];
 const VALID_WINDOWS = new Set([30, 90, 180, 365]);
-const RENDER_REFERENCE_MS = Date.now();
 const EMPTY_OS_PAYLOAD: DashboardOSPayload = {
   actionCenter: {
     followUpsDueToday: 0,
@@ -70,7 +70,6 @@ const EMPTY_OS_PAYLOAD: DashboardOSPayload = {
     interviewPacing: "on_track",
   },
   insights: [],
-  weightedPipelineScore: 0,
 };
 
 interface DashboardPageProps {
@@ -88,6 +87,7 @@ interface DashboardPageProps {
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  noStore();
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
@@ -298,7 +298,7 @@ npm run dev`}
             thirdRoundRate: 0,
           },
           EMPTY_OS_PAYLOAD,
-          { perApplication: [] as { applicationId: string; dayKey: string }[] },
+          { perApplication: [] as { applicationId: string; firstConfirmationAt: string }[] },
         ];
 
   const interviewRoundByAppId = isConnected
@@ -361,9 +361,8 @@ npm run dev`}
     appliedAt: app.appliedAt?.toISOString() ?? null,
     lastActivityAt: app.lastActivityAt.toISOString(),
   }));
-
   const windowMs = selectedWindow * 24 * 60 * 60 * 1000;
-  const nowMs = RENDER_REFERENCE_MS;
+  const nowMs = Date.now();
   const windowedApps = serializedApps.filter((app) => {
     const base = app.appliedAt ? new Date(app.appliedAt).getTime() : new Date(app.lastActivityAt).getTime();
     return nowMs - base <= windowMs;
@@ -411,11 +410,17 @@ npm run dev`}
       {/* Connect banner */}
       {!isConnected && <ConnectGmailBanner />}
 
-      {/* Executive top: today + insights (single section) */}
-      <ActionCenterInsights
-        actionCenter={osPayload.actionCenter}
-        insights={osPayload.insights}
-        weightedPipelineScore={osPayload.weightedPipelineScore}
+      <SimplifiedOverview
+        stats={stats}
+        windowDays={selectedWindow}
+        osPayload={osPayload}
+        roundMetrics={roundMetrics}
+        applications={serializedApps.map((a) => ({
+          company: a.company,
+          stage: a.stage,
+          lastActivityAt: a.lastActivityAt,
+        }))}
+        inboxInsightData={{ perApplication: inboxInsightData.perApplication }}
       />
       <DashboardInsights
         applications={serializedInsightApps}
@@ -423,13 +428,11 @@ npm run dev`}
         selectedStages={selectedStages}
         inboxInsightData={{ perApplication: inboxInsightData.perApplication }}
       />
-      <StatsBar stats={stats} selectedStages={selectedStages} />
-
-      {/* Operational execution sections */}
       <FunnelMetrics funnel={osPayload.funnel} />
       <FollowupIntelligencePanel followup={osPayload.followup} />
       <GoalsPacingPanel goals={osPayload.goals} roundMetrics={roundMetrics} />
       <TimeToEventPanel timeToEvent={osPayload.timeToEvent} />
+      <StatsBar stats={stats} selectedStages={selectedStages} />
 
       {/* Filter + Table */}
       <div className="flex items-center justify-between mb-4">

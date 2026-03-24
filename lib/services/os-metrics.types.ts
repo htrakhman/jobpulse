@@ -109,6 +109,5 @@ export interface DashboardOSPayload {
   timeToEvent: TimeToEventMetrics;
   goals: GoalsPacingMetrics;
   insights: SmartInsight[];
-  weightedPipelineScore: number;
 }
 

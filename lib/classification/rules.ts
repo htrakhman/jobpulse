@@ -349,9 +349,10 @@ const RULES: Rule[] = [
     match: ({ subject }) =>
       subjectContains(
         subject,
+        // Bare "thanks for applying" (some ATS use a name instead of "to Company")
+        "thanks for applying",
         "thank you for applying",
         "thank you for applying to",
-        "thanks for applying",
         "thanks for applying to",
         "thank you for your application",
         "thank you for your application to",

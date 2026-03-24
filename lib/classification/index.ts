@@ -11,21 +11,20 @@ export async function classifyEmail(email: ParsedEmail): Promise<ClassificationR
     receivedAt: email.receivedAt,
   };
 
-  // Quick pre-filter: is this even job-related?
-  if (!isJobRelated(ctx)) return null;
-
   const signals = extractSignals(email);
 
-  // Try deterministic rules first
+  // Deterministic rules first. Do NOT gate these behind `isJobRelated` — short ATS auto-replies
+  // often only match one keyword (e.g. "apply" inside "applying") and were skipped entirely.
   const ruleResult = classifyByRules(ctx);
   if (ruleResult) {
     return {
       ...ruleResult,
       ...signals,
-      // Rule result overrides extracted confidence
       confidence: "deterministic",
     };
   }
+
+  if (!isJobRelated(ctx)) return null;
 
   // Fall back to Claude
   const aiResult = await classifyWithClaude({

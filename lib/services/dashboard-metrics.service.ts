@@ -552,29 +552,6 @@ export async function getDashboardOSPayload(userId: string, windowDays: number):
     },
   ] as DashboardOSPayload["actionCenter"]["items"];
 
-  const weightedPipelineScore = Math.round(
-    apps.reduce((sum, app) => {
-      const stageWeight =
-        app.stage === "Offer"
-          ? 100
-          : app.stage === "Interviewing"
-          ? 70
-          : app.stage === "Assessment"
-          ? 60
-          : app.stage === "Scheduling"
-          ? 55
-          : app.stage === "Waiting"
-          ? 35
-          : app.stage === "Applied"
-          ? 25
-          : 10;
-      const priorityWeight =
-        app.targetPriority === "dream" ? 1.4 : app.targetPriority === "high" ? 1.2 : app.targetPriority === "medium" ? 1 : 0.8;
-      const desirabilityWeight = ((app.roleDesirabilityScore ?? 50) + (app.companyDesirabilityScore ?? 50)) / 100;
-      return sum + stageWeight * priorityWeight * desirabilityWeight;
-    }, 0)
-  );
-
   const insights = buildSmartInsights({
     staleApplications,
     bySource,
@@ -614,7 +591,6 @@ export async function getDashboardOSPayload(userId: string, windowDays: number):
     timeToEvent,
     goals: goalsMetrics,
     insights,
-    weightedPipelineScore,
   };
 }
 

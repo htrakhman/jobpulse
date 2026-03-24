@@ -19,7 +19,7 @@ interface DashboardInsightsProps {
   windowDays: number;
   selectedStages?: ApplicationStage[];
   /** First application_confirmation email per application (from inbox scan). */
-  inboxInsightData?: { perApplication: Array<{ applicationId: string; dayKey: string }> };
+  inboxInsightData?: { perApplication: Array<{ applicationId: string; firstConfirmationAt: string }> };
 }
 
 const TREND_MODE_OPTIONS: Array<{
@@ -88,6 +88,13 @@ function niceAxisMax(value: number): number {
   if (fraction <= 2) return 2 * base;
   if (fraction <= 5) return 5 * base;
   return 10 * base;
+}
+
+function toLocalDayKey(source: Date): string {
+  const y = source.getFullYear();
+  const m = String(source.getMonth() + 1).padStart(2, "0");
+  const d = String(source.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function normalizeCompanyKey(company: string): string {
@@ -269,12 +276,12 @@ export function DashboardInsights({
     (app) => selectedStages.length === 0 || selectedStages.includes(app.stage)
   );
 
-  const firstConfirmDayByAppId = new Map(
-    inboxInsightData.perApplication.map((p) => [p.applicationId, p.dayKey])
+  const firstConfirmAtByAppId = new Map(
+    inboxInsightData.perApplication.map((p) => [p.applicationId, p.firstConfirmationAt])
   );
 
   /** Cohort for inbox mode: applications with a first confirmation in the rolling window, stage-filtered. */
-  const inboxCohortApps = stageFiltered.filter((app) => firstConfirmDayByAppId.has(app.id));
+  const inboxCohortApps = stageFiltered.filter((app) => firstConfirmAtByAppId.has(app.id));
 
   const dedupedStageFiltered = dedupeByCompany(stageFiltered);
 
@@ -314,7 +321,7 @@ export function DashboardInsights({
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
+    const key = toLocalDayKey(d);
     buckets.push({
       key,
       label: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
@@ -325,8 +332,9 @@ export function DashboardInsights({
 
   if (trendMode === "inbox_confirmation") {
     for (const app of inboxCohortApps) {
-      const dayKey = firstConfirmDayByAppId.get(app.id);
-      if (!dayKey) continue;
+      const firstConfirmationAt = firstConfirmAtByAppId.get(app.id);
+      if (!firstConfirmationAt) continue;
+      const dayKey = toLocalDayKey(new Date(firstConfirmationAt));
       const idx = bucketMap.get(dayKey);
       if (idx !== undefined) buckets[idx].count += 1;
     }
@@ -334,16 +342,14 @@ export function DashboardInsights({
     for (const app of filteredAppliedAtRecord) {
       if (!app.appliedAt) continue;
       const source = new Date(app.appliedAt);
-      source.setHours(0, 0, 0, 0);
-      const dayKey = source.toISOString().slice(0, 10);
+      const dayKey = toLocalDayKey(source);
       const idx = bucketMap.get(dayKey);
       if (idx !== undefined) buckets[idx].count += 1;
     }
   } else {
     for (const app of filteredActivityDate) {
       const source = app.appliedAt ? new Date(app.appliedAt) : new Date(app.lastActivityAt);
-      source.setHours(0, 0, 0, 0);
-      const dayKey = source.toISOString().slice(0, 10);
+      const dayKey = toLocalDayKey(source);
       const idx = bucketMap.get(dayKey);
       if (idx !== undefined) buckets[idx].count += 1;
     }
@@ -398,20 +404,20 @@ export function DashboardInsights({
 
   return (
     <div className="mb-6 grid gap-4">
-      <div className="border border-gray-200 rounded-xl bg-white p-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-3">
+      <div className="border border-slate-200 rounded-xl bg-white p-3.5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-2.5">
           <div>
-            <p className="text-sm font-semibold text-gray-800">{chartTitle}</p>
-            <p className="text-[11px] text-gray-500 mt-1 max-w-xl">{modeMeta.description}</p>
+            <p className="text-sm font-semibold text-slate-800">{chartTitle}</p>
+            <p className="text-[11px] text-slate-500 mt-0.5 max-w-xl">{modeMeta.description}</p>
           </div>
           <div className="flex flex-col items-stretch sm:items-end gap-2 shrink-0">
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+            <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">
               Chart &amp; pie view
             </label>
             <select
               value={trendMode}
               onChange={(e) => setTrendMode(e.target.value as InsightTrendMode)}
-              className="h-9 min-w-[220px] rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-800"
+              className="h-8 min-w-[220px] rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-800"
             >
               {TREND_MODE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -421,15 +427,15 @@ export function DashboardInsights({
             </select>
           </div>
         </div>
-        <div className="text-[11px] text-gray-500 flex flex-wrap items-center gap-2 mb-2">
-          <span className="rounded bg-gray-50 px-2 py-1">
-            Total <strong className="text-gray-700">{total}</strong>
+        <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-2 mb-2">
+          <span className="rounded bg-slate-50 px-2 py-1">
+            Total <strong className="text-slate-700">{total}</strong>
           </span>
-          <span className="rounded bg-gray-50 px-2 py-1">
-            Avg/day <strong className="text-gray-700">{averagePerDay.toFixed(2)}</strong>
+          <span className="rounded bg-slate-50 px-2 py-1">
+            Avg/day <strong className="text-slate-700">{averagePerDay.toFixed(2)}</strong>
           </span>
-          <span className="rounded bg-gray-50 px-2 py-1">
-            Peak day <strong className="text-gray-700">{peak.count}</strong>
+          <span className="rounded bg-slate-50 px-2 py-1">
+            Peak day <strong className="text-slate-700">{peak.count}</strong>
           </span>
           {selectedStages.length > 0 && (
             <span className="rounded bg-gray-900 text-white px-2 py-1">
@@ -438,7 +444,7 @@ export function DashboardInsights({
           )}
         </div>
         <div
-          className="w-full h-52 relative pl-8 pr-2"
+          className="w-full h-48 relative pl-8 pr-2"
           onMouseMove={(e) => {
             const target = e.currentTarget.getBoundingClientRect();
             const x = Math.max(0, Math.min(target.width, e.clientX - target.left));
@@ -448,7 +454,7 @@ export function DashboardInsights({
           }}
           onMouseLeave={() => setHoverIndex(null)}
         >
-          <div className="absolute left-0 top-0 h-full w-7 text-[10px] text-gray-400 flex flex-col justify-between">
+          <div className="absolute left-0 top-0 h-full w-7 text-[10px] text-slate-500 flex flex-col justify-between">
             {yTicks.map((tick, i) => (
               <span key={i}>{tick}</span>
             ))}
@@ -456,18 +462,18 @@ export function DashboardInsights({
           <svg
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
-            className="w-full h-full rounded-lg bg-gradient-to-b from-blue-50/40 to-white"
+            className="w-full h-full rounded-lg bg-gradient-to-b from-slate-50 to-white"
           >
             <defs>
               <linearGradient id="trendArea" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.22" />
-                <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
+                <stop offset="0%" stopColor="#2563eb" stopOpacity="0.18" />
+                <stop offset="100%" stopColor="#2563eb" stopOpacity="0.01" />
               </linearGradient>
             </defs>
             {yTicks.map((_, idx) => {
               const y = (idx / Math.max(1, yTicks.length - 1)) * 100;
               return (
-                <line key={idx} x1="0" y1={y} x2="100" y2={y} stroke="#eef2ff" strokeWidth="0.6" />
+                <line key={idx} x1="0" y1={y} x2="100" y2={y} stroke="#dbe7ff" strokeWidth="0.7" />
               );
             })}
             <polygon points={areaPath} fill="url(#trendArea)" />
@@ -485,7 +491,7 @@ export function DashboardInsights({
                 y1="0"
                 x2={activeHover.x}
                 y2="100"
-                stroke="#93c5fd"
+                stroke="#60a5fa"
                 strokeDasharray="1.5 1.5"
                 strokeWidth="0.8"
               />
@@ -496,7 +502,7 @@ export function DashboardInsights({
               className="absolute z-10 -translate-x-1/2 rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-[11px] shadow-sm pointer-events-none"
               style={{
                 left: `calc(${activeHover.x}% + 32px)`,
-                top: `${Math.max(8, (activeHover.y / 100) * 208 - 8)}px`,
+                top: `${Math.max(8, (activeHover.y / 100) * 192 - 8)}px`,
               }}
             >
               <div className="font-medium text-gray-700">{activeHover.label}</div>
@@ -506,7 +512,7 @@ export function DashboardInsights({
             </div>
           )}
         </div>
-        <div className="flex justify-between text-[10px] text-gray-400 mt-2">
+        <div className="flex justify-between text-[10px] text-slate-500 mt-2">
           {monthLabels.map((p) => (
             <span key={p.key}>{p.label}</span>
           ))}

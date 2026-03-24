@@ -330,8 +330,8 @@ export async function getApplicationConfirmationInsightData(
   userId: string,
   windowDays: number
 ): Promise<{
-  /** First application_confirmation email per app, calendar day key (for charts + stage filters). */
-  perApplication: Array<{ applicationId: string; dayKey: string }>;
+  /** First application_confirmation email timestamp per app (client buckets by local day). */
+  perApplication: Array<{ applicationId: string; firstConfirmationAt: string }>;
 }> {
   const prisma = requirePrisma();
   const windowMs = windowDays * 24 * 60 * 60 * 1000;
@@ -356,16 +356,16 @@ export async function getApplicationConfirmationInsightData(
     }
   }
 
-  const perApplication: Array<{ applicationId: string; dayKey: string }> = [];
+  const perApplication: Array<{ applicationId: string; firstConfirmationAt: string }> = [];
 
   for (const [applicationId, receivedAt] of firstConfirmByApp) {
     const t = receivedAt.getTime();
     if (t > nowMs || nowMs - t > windowMs) continue;
 
-    const d = new Date(receivedAt);
-    d.setHours(0, 0, 0, 0);
-    const dayKey = d.toISOString().slice(0, 10);
-    perApplication.push({ applicationId, dayKey });
+    perApplication.push({
+      applicationId,
+      firstConfirmationAt: receivedAt.toISOString(),
+    });
   }
 
   return { perApplication };

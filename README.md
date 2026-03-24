@@ -94,7 +94,7 @@ Open [http://localhost:3000](http://localhost:3000).
 1. User signs up via Clerk
 2. User clicks "Connect Gmail" → Google OAuth flow
 3. System calls `gmail.users.watch()` to set up Pub/Sub notifications
-4. **Refresh** uses Gmail’s **History API** (new mail only, usually seconds); if that’s unavailable, a **narrow date-bounded** search — not a full inbox walk. **Load mail to Xd** only fetches the **gap** when widening the dashboard window. **Deep rescan** is the slow full walk (use rarely)
+4. **Refresh** pulls **new mail since the last import** using Gmail’s **History API** when possible; otherwise a **narrow date-bounded** delta — not a full inbox walk. The dashboard **date window** only filters how far back you *view* data; widening it does not automatically re-fetch older mail in the UI (the API still supports gap/full sync for ops if needed).
 5. Each email is classified:
    - **Deterministic rules** first (subject/body pattern matching)
    - **Claude** fallback for unmatched emails
@@ -151,7 +151,7 @@ app/
   (dashboard)/applications/[id] Application detail + timeline
   api/gmail/connect            Gmail OAuth initiation
   api/gmail/connect/callback   OAuth callback + token storage
-  api/gmail/sync               Incremental refresh, window gap, or deep rescan
+  api/gmail/sync               Incremental refresh (History/delta); optional gap/full via JSON flags
   api/gmail/webhook            Pub/Sub push endpoint
   api/applications             List/filter applications
   api/follow-ups               Follow-up suggestion management
