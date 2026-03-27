@@ -5,8 +5,8 @@ export function ConnectGmailBanner() {
         Connect your Gmail to get started
       </h2>
       <p className="text-gray-500 text-sm mb-4 max-w-md mx-auto">
-        JobPulse will scan your inbox for job-related emails and automatically populate
-        your dashboard. Only job emails are read and stored.
+        JobPulse will (1) scan your inbox for job-related emails and (2) send outreach
+        emails from your connected Gmail account. Only job emails are read and stored.
       </p>
       <a
         href="/api/gmail/connect"

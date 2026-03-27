@@ -14,6 +14,21 @@ import { backfillOperationalDataForUser } from "@/lib/services/backfill.service"
 const ALLOWED_WINDOWS = new Set([30, 90, 180, 365]);
 const FULL_RESCAN_DAYS = 3650;
 
+function isGmailInvalidGrantError(err: unknown): boolean {
+  const asAny = err as
+    | { message?: string; code?: number; status?: number; cause?: unknown }
+    | undefined;
+  const msg = `${asAny?.message ?? ""}`.toLowerCase();
+  if (msg.includes("invalid_grant")) return true;
+  if (msg.includes("invalid grant")) return true;
+
+  const causeMsg = `${(asAny?.cause as { message?: string } | undefined)?.message ?? ""}`.toLowerCase();
+  if (causeMsg.includes("invalid_grant") || causeMsg.includes("invalid grant")) return true;
+
+  const blob = JSON.stringify(err ?? {});
+  return /invalid[_\s-]?grant/i.test(blob);
+}
+
 async function runPostSyncPipeline(
   ownerUserId: string,
   daysBack: number,
@@ -144,6 +159,15 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     console.error("[api/gmail/sync] Error:", err);
+    if (isGmailInvalidGrantError(err)) {
+      return NextResponse.json(
+        {
+          error: "Gmail authorization expired. Reconnect Gmail and try refresh again.",
+          code: "gmail_reconnect_required",
+        },
+        { status: 401 }
+      );
+    }
     return NextResponse.json({ error: "Sync failed" }, { status: 500 });
   }
 }

@@ -192,6 +192,7 @@ model Application {
   outreachMessages OutreachMessage[]
   savedSearches    SavedSearch[]
   searchRuns       SearchRun[]
+  agentRuns        AgentRun[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -585,4 +586,69 @@ model OutreachMessage {
   @@index([contactId])
   @@index([applicationId])
   @@index([userId])
+}
+
+// ─── Agent ────────────────────────────────────────────────────────────────────
+
+enum AgentRunStatus {
+  running
+  completed
+  failed
+  pending_approval
+}
+
+model AgentConfig {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  enabled         Boolean  @default(true)
+  /// JSON array of title keywords to target, e.g. ["CEO","CTO","VP Engineering"]
+  targetTitles    String[]
+  maxContacts     Int      @default(3)
+  /// If true, emails are sent automatically. If false, drafts queue for user approval.
+  autoSend        Boolean  @default(false)
+  /// Which outreach template to use by default (built-in id or custom id)
+  preferredTemplate String? @default("executive-intro")
+  /// Outreach channel preference
+  channel         OutreachChannel @default(email)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AgentRun {
+  id              String         @id @default(cuid())
+  userId          String
+  applicationId   String
+  application     Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  status          AgentRunStatus @default(running)
+  triggerType     String         @default("manual") // "email_webhook" | "manual"
+  triggerEmailId  String?
+  contactsFound   Int            @default(0)
+  contactsEnriched Int           @default(0)
+  emailsDrafted   Int            @default(0)
+  emailsSent      Int            @default(0)
+  error           String?        @db.Text
+  steps           AgentRunStep[]
+  startedAt       DateTime       @default(now())
+  completedAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([applicationId])
+  @@index([status])
+}
+
+model AgentRunStep {
+  id        String   @id @default(cuid())
+  runId     String
+  run       AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  /// "search" | "enrich" | "draft" | "send" | "skip"
+  kind      String
+  /// "running" | "done" | "error" | "skipped"
+  status    String
+  summary   String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([runId])
 }

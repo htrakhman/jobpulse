@@ -123,6 +123,12 @@ export function SyncButton({ selectedWindow, scannedWindow, lastInboxSyncedAtIso
       });
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       if (!res.ok) {
+        if (data.code === "gmail_reconnect_required") {
+          setResult("Gmail session expired — reconnecting...");
+          const returnTo = encodeURIComponent(`${pathname}?${searchParams.toString()}`);
+          router.push(`/api/gmail/connect?returnTo=${returnTo}`);
+          return;
+        }
         const err =
           typeof data.error === "string"
             ? data.error

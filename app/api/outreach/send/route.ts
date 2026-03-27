@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requirePrisma } from "@/lib/prisma";
-import { sendEmail } from "@/lib/outreach/email";
+import { sendEmailViaGmail } from "@/lib/gmail/send";
 import { sendLinkedInMessage } from "@/lib/outreach/phantombuster";
 import { createOutreachSheet } from "@/lib/sheets/outreach-sheet";
 
@@ -51,7 +51,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await sendEmail({
+    const result = await sendEmailViaGmail({
+      userId,
       to: contactEmail,
       subject: finalSubject ?? `Reaching out — ${message.contact.company}`,
       body: finalBody,

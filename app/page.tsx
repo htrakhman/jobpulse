@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 export default async function LandingPage() {
   const { userId } = await auth();
-  if (userId) redirect("/dashboard");
+  if (userId) redirect("/agent");
 
   const coreFeatures = [
     {
@@ -82,7 +82,7 @@ export default async function LandingPage() {
             href="/sign-in"
             className="inline-flex items-center gap-2 border border-gray-300 text-gray-700 px-8 py-4 rounded-xl text-lg font-medium hover:border-gray-500 transition-colors"
           >
-            View Dashboard
+            Open Agent Console
           </Link>
         </div>
       </section>

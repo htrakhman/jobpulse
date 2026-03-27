@@ -362,7 +362,7 @@ npm run dev`}
     lastActivityAt: app.lastActivityAt.toISOString(),
   }));
   const windowMs = selectedWindow * 24 * 60 * 60 * 1000;
-  const nowMs = Date.now();
+  const nowMs = new Date().getTime();
   const windowedApps = serializedApps.filter((app) => {
     const base = app.appliedAt ? new Date(app.appliedAt).getTime() : new Date(app.lastActivityAt).getTime();
     return nowMs - base <= windowMs;

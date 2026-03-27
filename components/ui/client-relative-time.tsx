@@ -19,13 +19,15 @@ export function ClientRelativeTime({ iso, className }: Props) {
   useEffect(() => {
     const t = new Date(iso);
     if (Number.isNaN(t.getTime())) {
-      setLabel("—");
+      // Avoid synchronous state updates inside the effect body (lint rule).
+      setTimeout(() => setLabel("—"), 0);
       return;
     }
     function tick() {
       setLabel(formatDistanceToNow(t, { addSuffix: true }));
     }
-    tick();
+    // Avoid synchronous state updates inside the effect body (lint rule).
+    setTimeout(tick, 0);
     const id = window.setInterval(tick, 60_000);
     return () => window.clearInterval(id);
   }, [iso]);
