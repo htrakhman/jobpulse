@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+import { resolveOwnerUserId } from "@/lib/auth/resolve-owner-user-id";
 import { getOrCreateAgentConfig } from "@/lib/services/agent.service";
 import { requirePrisma } from "@/lib/prisma";
 
@@ -7,7 +8,9 @@ export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const config = await getOrCreateAgentConfig(userId);
+  const prisma = requirePrisma();
+  const ownerUserId = await resolveOwnerUserId(prisma, userId);
+  const config = await getOrCreateAgentConfig(ownerUserId);
   return NextResponse.json({ config });
 }
 
@@ -16,6 +19,7 @@ export async function PUT(request: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const prisma = requirePrisma();
+  const ownerUserId = await resolveOwnerUserId(prisma, userId);
   const body = await request.json() as {
     enabled?: boolean;
     targetTitles?: string[];
@@ -26,7 +30,7 @@ export async function PUT(request: NextRequest) {
   };
 
   const config = await prisma.agentConfig.upsert({
-    where: { userId },
+    where: { userId: ownerUserId },
     update: {
       ...(body.enabled !== undefined && { enabled: body.enabled }),
       ...(body.targetTitles !== undefined && { targetTitles: body.targetTitles }),
@@ -36,7 +40,7 @@ export async function PUT(request: NextRequest) {
       ...(body.channel !== undefined && { channel: body.channel }),
     },
     create: {
-      userId,
+      userId: ownerUserId,
       enabled: body.enabled ?? true,
       targetTitles: body.targetTitles ?? ["CEO", "CTO", "VP Engineering", "Founder"],
       maxContacts: body.maxContacts ?? 3,

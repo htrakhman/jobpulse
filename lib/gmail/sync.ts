@@ -1,15 +1,24 @@
 import { subDays, subHours } from "date-fns";
 import { getGmailClientForUser } from "./client";
+import { passesApplicationConfirmationInboxFilter } from "./application-confirmation-filter";
 import { parseGmailMessage } from "./parser";
 import { classifyEmail } from "@/lib/classification";
 import { upsertApplication } from "@/lib/services/application.service";
 import { requirePrisma } from "@/lib/prisma";
 
-/** Job-related Gmail search terms (shared across list / gap / delta queries). */
-const JOB_KEYWORDS = `(application OR interview OR invitation OR calendar OR scheduling OR availability OR "next steps" OR "phone screen" OR "hiring manager" OR assessment OR offer OR rejection OR hiring OR "thank you for applying" OR "thank you for your application" OR "thanks for your application" OR "application received")`;
+/**
+ * Gmail `q` for listing candidate messages. Ingest still requires confirmation phrases in
+ * BOTH subject and body (see `passesApplicationConfirmationInboxFilter`).
+ */
+const APPLICATION_CONFIRMATION_GMAIL_QUERY = [
+  '"thanks for applying"',
+  '"thank you for applying"',
+  '"thanks for your application"',
+  '"thank you for your application"',
+].join(" OR ");
 
 export function buildJobSearchQuery(daysBack: number, after?: Date): string {
-  let q = `${JOB_KEYWORDS} newer_than:${daysBack}d`;
+  let q = `(${APPLICATION_CONFIRMATION_GMAIL_QUERY}) newer_than:${daysBack}d`;
   if (after) {
     q += ` after:${formatGmailAfterDate(after)}`;
   }
@@ -20,7 +29,7 @@ export function buildJobSearchQuery(daysBack: number, after?: Date): string {
 export function buildWindowGapQuery(outerDaysBack: number, innerDaysBack: number): string {
   const after = subDays(new Date(), outerDaysBack);
   const before = subDays(new Date(), innerDaysBack);
-  return `${JOB_KEYWORDS} after:${formatGmailAfterDate(after)} before:${formatGmailAfterDate(before)}`;
+  return `(${APPLICATION_CONFIRMATION_GMAIL_QUERY}) after:${formatGmailAfterDate(after)} before:${formatGmailAfterDate(before)}`;
 }
 
 function formatGmailAfterDate(d: Date): string {
@@ -88,6 +97,7 @@ async function ingestMessageIds(
             });
             const parsed = parseGmailMessage(fullMsg.data);
             if (!parsed) return;
+            if (!passesApplicationConfirmationInboxFilter(parsed)) return;
             result.processed++;
             const classification = await classifyEmail(parsed);
             if (!classification) return;

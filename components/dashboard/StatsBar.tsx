@@ -44,7 +44,7 @@ export function StatsBar({ stats, selectedStages = [] }: StatsBarProps) {
       color: "text-blue-600",
       stage: "Applied" as ApplicationStage,
       info:
-        'Detected from application-confirmation patterns: "thank you for applying (to …)", "thank you for your application (to …)", "application received", "we received your application", and similar ATS auto-replies.',
+        "Gmail sync only ingests acknowledgement mail where phrases like “thanks for applying” / “thank you for your application” appear in both the subject and the body (HTML/plain). Older data may include broader patterns.",
     },
     {
       label: "Awaiting Response",

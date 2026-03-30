@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { AgentInboxSync } from "@/components/agent/AgentInboxSync";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -51,10 +52,28 @@ interface Stats {
   totalApplications: number;
 }
 
+/** Recent applications for the main table (independent of whether any AgentRun exists yet). */
+export interface AgentApplicationRow {
+  id: string;
+  company: string;
+  role: string | null;
+  stage: string;
+  appliedAt: string | null;
+  lastActivityAt: string;
+  outreachSent: boolean;
+  latestRunStatus: string | null;
+  latestContactsFound: number | null;
+  draftCount: number;
+  sentCount: number;
+}
+
 interface Props {
   config: AgentConfig;
   recentRuns: AgentRun[];
+  recentApplications: AgentApplicationRow[];
   stats: Stats;
+  lastInboxSyncedAtIso: string | null;
+  gmailConnected: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -99,17 +118,61 @@ function timeAgo(dateStr: string) {
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+function stageColor(stage: string) {
+  switch (stage) {
+    case "Applied": return "bg-blue-100 text-blue-700";
+    case "Waiting": return "bg-slate-100 text-slate-600";
+    case "Scheduling": return "bg-purple-100 text-purple-700";
+    case "Interviewing": return "bg-indigo-100 text-indigo-700";
+    case "Assessment": return "bg-cyan-100 text-cyan-700";
+    case "Offer": return "bg-emerald-100 text-emerald-700";
+    case "Rejected": return "bg-red-100 text-red-600";
+    case "Closed": return "bg-slate-100 text-slate-500";
+    default: return "bg-slate-100 text-slate-600";
+  }
+}
+
+function agentStatusIcon(status: string) {
+  switch (status) {
+    case "completed": return { icon: "✅", label: "Done" };
+    case "running": return { icon: "⏳", label: "Running" };
+    case "pending_approval": return { icon: "📬", label: "Needs review" };
+    case "failed": return { icon: "❌", label: "Failed" };
+    default: return { icon: "—", label: status };
+  }
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function AgentDashboardClient({ config, recentRuns, stats }: Props) {
+export default function AgentDashboardClient({
+  config,
+  recentRuns,
+  recentApplications,
+  stats,
+  lastInboxSyncedAtIso,
+  gmailConnected,
+}: Props) {
   const router = useRouter();
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const [isToggling, setIsToggling] = useState(false);
   const [agentEnabled, setAgentEnabled] = useState(config.enabled);
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
+
+  /** Soft “live” refresh: re-fetch server data periodically while tab is visible */
+  useEffect(() => {
+    const tick = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        router.refresh();
+      }
+    };
+    const id = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(id);
+  }, [router]);
 
   const toggleAgent = useCallback(async () => {
     setIsToggling(true);
@@ -176,6 +239,7 @@ export default function AgentDashboardClient({ config, recentRuns, stats }: Prop
       </header>
 
       <main className="flex-1 px-6 py-6 space-y-6">
+        <AgentInboxSync lastInboxSyncedAtIso={lastInboxSyncedAtIso} gmailConnected={gmailConnected} />
 
         {/* ── Stats row ── */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
@@ -198,15 +262,115 @@ export default function AgentDashboardClient({ config, recentRuns, stats }: Prop
           ))}
         </div>
 
-        {/* ── How it works (empty state) ── */}
-        {recentRuns.length === 0 && (
+        {/* ── Applications (primary work surface: enrichment + outreach) ── */}
+        {recentApplications.length > 0 && (
+          <section className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">Your applications</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Run the agent on a row to find contacts, enrich, and draft emails.
+                  {stats.totalApplications > recentApplications.length
+                    ? ` Showing ${recentApplications.length} most recent of ${stats.totalApplications}.`
+                    : ` ${stats.totalApplications} total.`}
+                </p>
+              </div>
+              <Link
+                href="/agent/applications"
+                className="text-xs font-medium text-blue-600 hover:underline shrink-0"
+              >
+                View all & search →
+              </Link>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-white">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Company / role</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Stage</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Agent</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Outreach</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Activity</th>
+                    <th className="px-3 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {recentApplications.map((app) => {
+                    const agentStatus = app.latestRunStatus ? agentStatusIcon(app.latestRunStatus) : null;
+                    return (
+                      <tr key={app.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3">
+                          <Link
+                            href={`/applications/${app.id}`}
+                            className="font-semibold text-slate-900 hover:text-blue-600"
+                          >
+                            {app.company}
+                          </Link>
+                          {app.role && <p className="text-xs text-slate-500 mt-0.5">{app.role}</p>}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${stageColor(app.stage)}`}>
+                            {app.stage}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
+                          {agentStatus ? (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span>{agentStatus.icon}</span>
+                              <span className="text-xs text-slate-600">{agentStatus.label}</span>
+                              {(app.latestContactsFound ?? 0) > 0 && (
+                                <span className="text-xs text-slate-400">· {app.latestContactsFound} found</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">Not run</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="text-xs text-slate-600">
+                            {app.sentCount > 0 && (
+                              <span className="text-emerald-600 font-medium">{app.sentCount} sent</span>
+                            )}
+                            {app.draftCount > 0 && (
+                              <span className={`text-amber-600 font-medium ${app.sentCount > 0 ? " ml-1" : ""}`}>
+                                {app.draftCount} draft{app.draftCount !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                            {app.sentCount === 0 && app.draftCount === 0 && (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-400 whitespace-nowrap">
+                          {timeAgo(app.lastActivityAt)}
+                        </td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => triggerAgent(app.id)}
+                            disabled={triggeringId === app.id}
+                            className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                          >
+                            {triggeringId === app.id ? "Running…" : app.latestRunStatus ? "↻ Re-run" : "▶ Run agent"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* ── How it works (empty state: no apps in system yet) ── */}
+        {recentApplications.length === 0 && recentRuns.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
             <p className="text-4xl mb-3">🤖</p>
             <h2 className="text-lg font-semibold text-slate-800 mb-2">Agent is ready</h2>
             <p className="text-sm text-slate-500 max-w-md mx-auto mb-6">
-              As soon as you get a &quot;Thank you for applying&quot; email, the agent will
-              automatically find decision-makers at that company, enrich their contact info,
-              and draft personalized outreach emails for you.
+              Connect Gmail and sync above so applications appear here. Then run the agent on each role to find
+              decision-makers, enrich contacts, and draft outreach.
             </p>
             <div className="flex justify-center gap-3">
               <Link

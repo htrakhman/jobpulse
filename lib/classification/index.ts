@@ -11,11 +11,13 @@ export async function classifyEmail(email: ParsedEmail): Promise<ClassificationR
     receivedAt: email.receivedAt,
   };
 
-  const signals = extractSignals(email);
-
   // Deterministic rules first. Do NOT gate these behind `isJobRelated` — short ATS auto-replies
   // often only match one keyword (e.g. "apply" inside "applying") and were skipped entirely.
   const ruleResult = classifyByRules(ctx);
+  const signals = extractSignals(
+    email,
+    ruleResult ? { emailType: ruleResult.emailType, stage: ruleResult.stage } : undefined
+  );
   if (ruleResult) {
     return {
       ...ruleResult,

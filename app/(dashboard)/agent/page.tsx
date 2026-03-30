@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { requirePrisma } from "@/lib/prisma";
 import AgentDashboardClient from "@/components/agent/AgentDashboardClient";
@@ -17,6 +17,27 @@ export default async function AgentPage() {
   if (!userId) redirect("/sign-in");
 
   const prisma = requirePrisma();
+  const clerkUser = await currentUser();
+  const clerkEmail = clerkUser?.emailAddresses[0]?.emailAddress ?? "";
+
+  /** Same owner resolution as dashboard — data may live under email-matched User row */
+  let ownerUserId = userId;
+  const userById = await prisma.user.findUnique({ where: { id: userId } });
+  if (!userById && clerkEmail) {
+    const userByEmail = await prisma.user.findUnique({ where: { email: clerkEmail } });
+    if (userByEmail) ownerUserId = userByEmail.id;
+  }
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: ownerUserId },
+    select: { lastInboxSyncedAt: true },
+  });
+  const connectedAccount = await prisma.connectedAccount.findUnique({
+    where: { userId: ownerUserId },
+    select: { email: true },
+  });
+  const lastInboxSyncedAtIso = dbUser?.lastInboxSyncedAt?.toISOString() ?? null;
+  const gmailConnected = !!connectedAccount?.email;
 
   // Use raw SQL to avoid stale Prisma client model delegates
   try {
@@ -57,7 +78,7 @@ export default async function AgentPage() {
       autoSend: boolean;
       preferredTemplate: string | null;
       channel: string;
-    }>>(`SELECT "enabled", "targetTitles", "maxContacts", "autoSend", "preferredTemplate", "channel" FROM "AgentConfig" WHERE "userId" = $1 LIMIT 1`, userId);
+    }>>(`SELECT "enabled", "targetTitles", "maxContacts", "autoSend", "preferredTemplate", "channel" FROM "AgentConfig" WHERE "userId" = $1 LIMIT 1`, ownerUserId);
 
     const config = configs[0] ?? DEFAULT_CONFIG;
 
@@ -85,7 +106,7 @@ export default async function AgentPage() {
       WHERE r."userId" = $1
       ORDER BY r."createdAt" DESC
       LIMIT 15
-    `, userId);
+    `, ownerUserId);
 
     // Fetch steps for each run
     const runIds = recentRuns.map(r => r.id);
@@ -116,21 +137,53 @@ export default async function AgentPage() {
     // Stats
     const countResult = (rows: Array<{ count: bigint }>) => Number(rows[0]?.count ?? 0);
     const [totalRuns, completed, pending, emailsSent, pendingDrafts, totalApps] = await Promise.all([
-      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT count(*) FROM "AgentRun" WHERE "userId" = $1`, userId).then(countResult),
-      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT count(*) FROM "AgentRun" WHERE "userId" = $1 AND "status" = 'completed'`, userId).then(countResult),
-      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT count(*) FROM "AgentRun" WHERE "userId" = $1 AND "status" = 'pending_approval'`, userId).then(countResult),
-      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT count(*) FROM "OutreachMessage" WHERE "userId" = $1 AND "status" = 'sent'`, userId).then(countResult),
-      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT count(*) FROM "OutreachMessage" WHERE "userId" = $1 AND "status" = 'draft'`, userId).then(countResult),
-      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT count(*) FROM "Application" WHERE "userId" = $1`, userId).then(countResult),
+      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT count(*) FROM "AgentRun" WHERE "userId" = $1`, ownerUserId).then(countResult),
+      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT count(*) FROM "AgentRun" WHERE "userId" = $1 AND "status" = 'completed'`, ownerUserId).then(countResult),
+      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT count(*) FROM "AgentRun" WHERE "userId" = $1 AND "status" = 'pending_approval'`, ownerUserId).then(countResult),
+      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT count(*) FROM "OutreachMessage" WHERE "userId" = $1 AND "status" = 'sent'`, ownerUserId).then(countResult),
+      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT count(*) FROM "OutreachMessage" WHERE "userId" = $1 AND "status" = 'draft'`, ownerUserId).then(countResult),
+      prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT count(*) FROM "Application" WHERE "userId" = $1`, ownerUserId).then(countResult),
     ]);
 
     const stats = { totalRuns, completed, pending, emailsSent, pendingDrafts, totalApplications: totalApps };
+
+    const recentApplications = await prisma.$queryRawUnsafe<Array<{
+      id: string;
+      company: string;
+      role: string | null;
+      stage: string;
+      appliedAt: string | null;
+      lastActivityAt: string;
+      outreachSent: boolean;
+      latestRunStatus: string | null;
+      latestContactsFound: number | null;
+      draftCount: number;
+      sentCount: number;
+    }>>(`
+      SELECT
+        a."id", a."company", a."role",
+        a."stage"::text,
+        a."appliedAt"::text,
+        a."lastActivityAt"::text,
+        a."outreachSent",
+        (SELECT r."status" FROM "AgentRun" r WHERE r."applicationId" = a."id" ORDER BY r."createdAt" DESC LIMIT 1) AS "latestRunStatus",
+        (SELECT r."contactsFound" FROM "AgentRun" r WHERE r."applicationId" = a."id" ORDER BY r."createdAt" DESC LIMIT 1) AS "latestContactsFound",
+        (SELECT COUNT(*)::int FROM "OutreachMessage" om WHERE om."applicationId" = a."id" AND om."status" = 'draft') AS "draftCount",
+        (SELECT COUNT(*)::int FROM "OutreachMessage" om WHERE om."applicationId" = a."id" AND om."status" = 'sent') AS "sentCount"
+      FROM "Application" a
+      WHERE a."userId" = $1
+      ORDER BY COALESCE(a."appliedAt", a."lastActivityAt") DESC NULLS LAST
+      LIMIT 50
+    `, ownerUserId);
 
     return (
       <AgentDashboardClient
         config={config as Parameters<typeof AgentDashboardClient>[0]["config"]}
         recentRuns={runsWithSteps as Parameters<typeof AgentDashboardClient>[0]["recentRuns"]}
+        recentApplications={recentApplications}
         stats={stats}
+        lastInboxSyncedAtIso={lastInboxSyncedAtIso}
+        gmailConnected={gmailConnected}
       />
     );
   } catch (err) {

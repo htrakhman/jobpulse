@@ -10,6 +10,18 @@ function decodeBase64(encoded: string): string {
   }
 }
 
+/** Strip tags/scripts so confirmation phrases in HTML-only ATS emails match in sync filter. */
+function stripHtmlToPlain(html: string): string {
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&[a-z#0-9]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function extractTextFromPayload(payload: gmail_v1.Schema$MessagePart): string {
   if (!payload) return "";
 
@@ -19,12 +31,18 @@ function extractTextFromPayload(payload: gmail_v1.Schema$MessagePart): string {
     return decodeBase64(payload.body.data);
   }
 
+  if (mimeType === "text/html" && payload.body?.data) {
+    return stripHtmlToPlain(decodeBase64(payload.body.data));
+  }
+
   if (mimeType.startsWith("multipart/") && payload.parts) {
-    // Prefer text/plain, fall back to text/html
+    // Prefer text/plain, then text/html, then recurse
     const textPart = payload.parts.find((p) => p.mimeType === "text/plain");
     if (textPart?.body?.data) return decodeBase64(textPart.body.data);
 
-    // Recurse into parts
+    const htmlPart = payload.parts.find((p) => p.mimeType === "text/html");
+    if (htmlPart?.body?.data) return stripHtmlToPlain(decodeBase64(htmlPart.body.data));
+
     for (const part of payload.parts) {
       const text = extractTextFromPayload(part);
       if (text) return text;
